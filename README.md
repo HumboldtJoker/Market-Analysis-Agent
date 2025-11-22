@@ -1,9 +1,12 @@
 # AutoInvestor: AI-Powered Investment Research Agent
 
+> ⚠️ **PROTOTYPE STATUS**: This is an experimental research tool currently in testing. Analysis accuracy is being validated through long-term testing. Use for educational purposes and research only. Not recommended for production trading decisions.
+
 An intelligent investment research agent that uses Claude AI with ReAct (Reasoning + Acting) methodology to analyze stocks using real-time market data and provide personalized investment recommendations.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)](https://github.com/HumboldtJoker/Market-Analysis-Agent)
 
 ## 🌟 Features
 
@@ -185,18 +188,48 @@ agent.tools.register(Tool(
 - [ ] Automated stop-losses
 - [ ] Circuit breakers for losses >2%
 
-## ⚠️ Disclaimer
+## ⚠️ Important Disclaimers
+
+### Prototype Status
+
+**THIS IS A RESEARCH PROTOTYPE - NOT PRODUCTION-READY**
+
+- ⚠️ Currently undergoing long-term accuracy testing
+- ⚠️ Analysis quality and consistency not yet validated
+- ⚠️ May contain bugs or produce unreliable results
+- ⚠️ Use ONLY for educational purposes and research
+- ⚠️ DO NOT use for actual trading decisions
+
+**Validation Status:**
+- ✓ Technical implementation tested and working
+- ✓ Real-time data integration functional
+- ⏳ Long-term analysis accuracy: UNDER EVALUATION
+- ⏳ Recommendation quality: BEING TESTED
+- ⏳ Performance tracking: IN DEVELOPMENT
+
+### Financial Disclaimer
 
 **This tool is for educational and research purposes only.**
 
 - NOT financial advice
+- NOT a substitute for professional financial guidance
 - Past performance does not guarantee future results
 - Always do your own due diligence
-- Consider consulting a licensed financial advisor
+- Consult a licensed financial advisor before making investment decisions
 - Start with paper trading before risking real money
 - Never invest more than you can afford to lose
 
-The authors assume no liability for investment decisions made using this tool.
+**The authors assume no liability for investment decisions made using this tool.**
+
+### We Value Your Feedback
+
+As a prototype, we're actively seeking feedback on:
+- Analysis quality and accuracy
+- Feature requests and improvements
+- Bug reports and issues
+- Real-world usage experiences
+
+Please open an issue to share your experience!
 
 ## 📄 License
 
