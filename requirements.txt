@@ -4,5 +4,8 @@ yfinance>=0.2.66
 pandas>=2.2.0
 numpy>=1.26.0
 
+# Trading execution (optional - only needed for live/Alpaca trading)
+alpaca-py>=0.43.0
+
 # Optional but recommended
 python-dotenv>=1.0.0  # For .env file support
