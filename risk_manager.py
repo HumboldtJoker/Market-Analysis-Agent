@@ -2,10 +2,15 @@
 Risk Manager for AutoInvestor
 
 Handles position sizing, stop-losses, and circuit breakers to protect capital.
+Supports automated stop-loss execution with comprehensive safety mechanisms.
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from investor_profile import InvestorProfile
+import time
+from datetime import datetime, time as dt_time
+import pytz
+import logging
 
 
 class RiskManager:
@@ -20,14 +25,25 @@ class RiskManager:
     - Risk-adjusted order validation
     """
 
-    def __init__(self, investor_profile: Optional[InvestorProfile] = None):
+    def __init__(self, investor_profile: Optional[InvestorProfile] = None,
+                 enable_auto_execute: bool = False,
+                 order_executor=None):
         """
         Initialize risk manager
 
         Args:
             investor_profile: Optional investor profile for personalized risk settings
+            enable_auto_execute: Enable automated stop-loss execution (default: False)
+            order_executor: OrderExecutor instance for executing trades (required if enable_auto_execute=True)
         """
         self.profile = investor_profile
+
+        # Auto-execution settings
+        self.enable_auto_execute = enable_auto_execute
+        self.order_executor = order_executor
+
+        if self.enable_auto_execute and not self.order_executor:
+            raise ValueError("order_executor required when enable_auto_execute=True")
 
         # Default risk parameters (can be overridden by investor profile)
         if investor_profile and hasattr(investor_profile, 'profile'):
@@ -48,6 +64,22 @@ class RiskManager:
         # Tracking
         self.daily_starting_value = None
         self.circuit_breaker_triggered = False
+
+        # Auto-execute tracking
+        self.daily_auto_sells = 0
+        self.max_daily_auto_sells = 10
+        self.confirmation_delay_seconds = 5
+        self.auto_execute_log = []
+
+        # Market hours (US Eastern Time)
+        self.market_open = dt_time(9, 30)  # 9:30 AM
+        self.market_close = dt_time(16, 0)  # 4:00 PM
+        self.eastern_tz = pytz.timezone('US/Eastern')
+
+        # Setup logging
+        logging.basicConfig(level=logging.INFO,
+                          format='%(asctime)s - %(levelname)s - %(message)s')
+        self.logger = logging.getLogger(__name__)
 
     def calculate_position_size(self, portfolio_value: float,
                                ticker: str,
@@ -237,10 +269,169 @@ class RiskManager:
         """
         self.daily_starting_value = starting_value
         self.circuit_breaker_triggered = False
+        self.daily_auto_sells = 0  # Reset auto-sell counter
+
+    def _is_market_hours(self) -> bool:
+        """Check if current time is within market hours (9:30 AM - 4:00 PM ET)"""
+        now_et = datetime.now(self.eastern_tz).time()
+        return self.market_open <= now_et <= self.market_close
+
+    def _can_auto_execute(self) -> Tuple[bool, Optional[str]]:
+        """
+        Check if automated execution is allowed
+
+        Returns:
+            Tuple of (allowed: bool, reason: Optional[str])
+        """
+        if not self.enable_auto_execute:
+            return False, "Auto-execution is disabled"
+
+        if self.circuit_breaker_triggered:
+            return False, "Circuit breaker is active"
+
+        if not self._is_market_hours():
+            return False, "Outside market hours (9:30 AM - 4:00 PM ET)"
+
+        if self.daily_auto_sells >= self.max_daily_auto_sells:
+            return False, f"Daily auto-sell limit reached ({self.max_daily_auto_sells})"
+
+        return True, None
+
+    def monitor_and_execute_stops(self, positions: Dict[str, Dict],
+                                  current_prices: Dict[str, float],
+                                  stop_loss_pct: float = 0.10,
+                                  dry_run: bool = False) -> List[Dict]:
+        """
+        Monitor positions for stop-loss triggers and optionally execute sells
+
+        Args:
+            positions: Dict of positions {ticker: {'quantity': int, 'avg_price': float, ...}}
+            current_prices: Dict of current prices {ticker: float}
+            stop_loss_pct: Stop-loss percentage (default: 10%)
+            dry_run: If True, only report triggers without executing (default: False)
+
+        Returns:
+            List of dicts containing stop-loss trigger info and execution results
+        """
+        results = []
+
+        for ticker, position in positions.items():
+            # Skip if no current price available
+            if ticker not in current_prices:
+                self.logger.warning(f"No price available for {ticker}, skipping")
+                continue
+
+            current_price = current_prices[ticker]
+            entry_price = position.get('avg_price') or position.get('entry_price')
+            quantity = position.get('quantity', 0)
+
+            if not entry_price or quantity <= 0:
+                continue
+
+            # Check stop-loss
+            should_sell, stop_info = self.check_stop_loss(
+                ticker, entry_price, current_price, stop_loss_pct
+            )
+
+            if should_sell:
+                result = {
+                    **stop_info,
+                    'quantity': quantity,
+                    'dry_run': dry_run,
+                    'auto_executed': False,
+                    'execution_result': None
+                }
+
+                # If dry run, just report
+                if dry_run:
+                    result['message'] = "STOP-LOSS TRIGGERED (DRY RUN - no action taken)"
+                    self.logger.info(f"[DRY RUN] Stop-loss triggered for {ticker}: "
+                                   f"{current_price} <= {stop_info['stop_loss_price']}")
+                    results.append(result)
+                    continue
+
+                # Check if we can auto-execute
+                can_execute, reason = self._can_auto_execute()
+
+                if not can_execute:
+                    result['message'] = f"Stop-loss triggered but auto-execution blocked: {reason}"
+                    self.logger.warning(f"Stop-loss triggered for {ticker} but cannot execute: {reason}")
+                    results.append(result)
+                    continue
+
+                # Log the pending execution
+                self.logger.warning(
+                    f"STOP-LOSS TRIGGERED for {ticker}: "
+                    f"current=${current_price:.2f}, stop=${stop_info['stop_loss_price']:.2f}, "
+                    f"loss={stop_info['loss_pct']:.2f}%"
+                )
+
+                # Confirmation delay (safety mechanism against flash crashes)
+                self.logger.info(f"Waiting {self.confirmation_delay_seconds}s before executing...")
+                time.sleep(self.confirmation_delay_seconds)
+
+                # Re-fetch price after delay to avoid stale data
+                try:
+                    fresh_price = self.order_executor.get_current_price(ticker)
+
+                    # Re-check stop-loss with fresh price
+                    still_triggered, fresh_info = self.check_stop_loss(
+                        ticker, entry_price, fresh_price, stop_loss_pct
+                    )
+
+                    if not still_triggered:
+                        result['message'] = "Stop-loss no longer triggered after confirmation delay (price recovered)"
+                        result['fresh_price'] = fresh_price
+                        self.logger.info(f"Stop-loss for {ticker} no longer triggered after delay "
+                                       f"(price recovered to ${fresh_price:.2f})")
+                        results.append(result)
+                        continue
+
+                    # Execute limit sell at stop price (not market)
+                    self.logger.warning(f"Executing stop-loss sell for {ticker}: {quantity} shares @ ${stop_info['stop_loss_price']:.2f}")
+
+                    execution_result = self.order_executor.execute_order(
+                        ticker=ticker,
+                        action='SELL',
+                        quantity=quantity,
+                        order_type='limit',
+                        limit_price=stop_info['stop_loss_price']
+                    )
+
+                    result['auto_executed'] = True
+                    result['execution_result'] = execution_result
+                    result['fresh_price'] = fresh_price
+
+                    if execution_result.get('success'):
+                        self.daily_auto_sells += 1
+                        result['message'] = f"Stop-loss executed successfully (auto-sell #{self.daily_auto_sells})"
+                        self.logger.info(f"Stop-loss executed for {ticker}: {execution_result}")
+                    else:
+                        result['message'] = f"Stop-loss execution failed: {execution_result.get('reason', 'unknown')}"
+                        self.logger.error(f"Stop-loss execution failed for {ticker}: {execution_result}")
+
+                    # Log to audit trail
+                    self.auto_execute_log.append({
+                        'timestamp': datetime.now().isoformat(),
+                        'ticker': ticker,
+                        'trigger_price': current_price,
+                        'stop_price': stop_info['stop_loss_price'],
+                        'quantity': quantity,
+                        'execution_result': execution_result
+                    })
+
+                except Exception as e:
+                    result['message'] = f"Stop-loss execution error: {str(e)}"
+                    result['error'] = str(e)
+                    self.logger.error(f"Error executing stop-loss for {ticker}: {e}")
+
+                results.append(result)
+
+        return results
 
     def get_risk_summary(self) -> Dict:
         """Get current risk management settings"""
-        return {
+        summary = {
             "max_position_size_pct": round(self.max_position_size * 100, 2),
             "daily_loss_limit_pct": round(self.daily_loss_limit * 100, 2),
             "absolute_max_position_pct": round(self.absolute_max_position * 100, 2),
@@ -249,12 +440,29 @@ class RiskManager:
             "daily_starting_value": round(self.daily_starting_value, 2) if self.daily_starting_value else None
         }
 
+        # Add auto-execute info if enabled
+        if self.enable_auto_execute:
+            summary.update({
+                "auto_execute_enabled": True,
+                "daily_auto_sells": self.daily_auto_sells,
+                "max_daily_auto_sells": self.max_daily_auto_sells,
+                "confirmation_delay_seconds": self.confirmation_delay_seconds,
+                "market_hours": f"{self.market_open.strftime('%H:%M')} - {self.market_close.strftime('%H:%M')} ET",
+                "is_market_hours": self._is_market_hours(),
+                "can_auto_execute": self._can_auto_execute()[0],
+                "total_auto_executions": len(self.auto_execute_log)
+            })
+        else:
+            summary["auto_execute_enabled"] = False
+
+        return summary
+
 
 if __name__ == "__main__":
     # Quick test
     print("Testing RiskManager...")
 
-    # Create risk manager
+    # Create risk manager (without auto-execute for basic tests)
     rm = RiskManager()
 
     print("\n1. Risk Settings:")
@@ -294,3 +502,59 @@ if __name__ == "__main__":
         cash=50000
     )
     print(f"Valid: {valid}, Reason: {reason}")
+
+    print("\n" + "="*70)
+    print("AUTO-EXECUTE STOP-LOSS TEST (DRY RUN)")
+    print("="*70)
+
+    # Test auto-execute functionality in dry-run mode
+    print("\n8. Test auto-execute stop-loss monitoring (dry run):")
+
+    # Mock positions that would trigger stop-losses
+    test_positions = {
+        "AAPL": {"quantity": 50, "avg_price": 180.0},
+        "TSLA": {"quantity": 20, "avg_price": 250.0},
+        "NVDA": {"quantity": 10, "avg_price": 500.0}
+    }
+
+    # Mock current prices (AAPL and TSLA hit stop-loss, NVDA is fine)
+    test_prices = {
+        "AAPL": 160.0,  # Down 11.1% - triggers 10% stop-loss
+        "TSLA": 220.0,  # Down 12% - triggers stop-loss
+        "NVDA": 510.0   # Up 2% - no trigger
+    }
+
+    # Create risk manager without order executor (dry run only)
+    rm_test = RiskManager(enable_auto_execute=False)
+
+    results = rm_test.monitor_and_execute_stops(
+        positions=test_positions,
+        current_prices=test_prices,
+        stop_loss_pct=0.10,
+        dry_run=True
+    )
+
+    print(f"\nStop-loss monitoring results: {len(results)} trigger(s)")
+    for i, result in enumerate(results, 1):
+        print(f"\n  Trigger #{i}:")
+        print(f"    Ticker: {result['ticker']}")
+        print(f"    Entry: ${result['entry_price']:.2f}")
+        print(f"    Current: ${result['current_price']:.2f}")
+        print(f"    Loss: {result['loss_pct']:.2f}%")
+        print(f"    Stop Price: ${result['stop_loss_price']:.2f}")
+        print(f"    Quantity: {result['quantity']} shares")
+        print(f"    Status: {result['message']}")
+
+    print("\n" + "="*70)
+    print("SAFETY MECHANISMS:")
+    print("="*70)
+    print("\n  1. Kill Switch: enable_auto_execute=False by default")
+    print("  2. Confirmation Delay: 5-second wait before executing")
+    print("  3. Price Re-check: Fetches fresh price after delay")
+    print("  4. Market Hours: Only executes 9:30 AM - 4:00 PM ET")
+    print("  5. Daily Limit: Max 10 auto-sells per day")
+    print("  6. Limit Orders: Sells at stop price, not market")
+    print("  7. Circuit Breaker: Halts if portfolio loss limit hit")
+    print("  8. Audit Trail: Logs all automated actions")
+    print("\n  To enable: RiskManager(enable_auto_execute=True, order_executor=executor)")
+    print("="*70)
