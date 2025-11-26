@@ -197,6 +197,35 @@ def cmd_sectors(holdings: List[str]):
         print(result['summary'])
 
 
+def cmd_backtest(windows_str: str = "30,60,90"):
+    """Backtest congressional trading strategy"""
+    from backtesting import run_backtest_from_api, format_backtest_report
+
+    api_key = os.environ.get("RAPIDAPI_KEY")
+    if not api_key:
+        print("ERROR: RAPIDAPI_KEY environment variable required")
+        print("Get free API key at: https://rapidapi.com/politics-trackers-politics-trackers-default/api/politician-trade-tracker")
+        return
+
+    # Parse windows
+    try:
+        windows = [int(w.strip()) for w in windows_str.split(',')]
+    except ValueError:
+        print("ERROR: Windows must be comma-separated integers (e.g., 30,60,90)")
+        return
+
+    print(f"\nRunning congressional trading backtest...")
+    print(f"Return windows: {windows} days\n")
+
+    results = run_backtest_from_api(api_key=api_key, verbose=True)
+
+    if "error" in results:
+        print(f"ERROR: {results['error']}")
+    else:
+        report = format_backtest_report(results)
+        print(report)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="AutoInvestor CLI - AI-powered investment research",
@@ -205,15 +234,16 @@ def main():
 Examples:
   python cli.py analyze NVDA                    Full analysis of NVIDIA
   python cli.py analyze MSFT --collaborative    Interactive analysis with questions
-  python cli.py technicals AAPL --period 90     Technical indicators for Apple
+  python cli.py technicals AAPL                 Technical indicators for Apple
   python cli.py congress --aggregate            Overall congressional trading trends
   python cli.py congress AVGO                   Congressional trades for Broadcom
   python cli.py portfolio AAPL MSFT GOOGL       Portfolio correlation analysis
   python cli.py sectors AAPL:100 JPM:50         Sector allocation analysis
+  python cli.py backtest                        Backtest congressional trading strategy
 
 Environment Variables:
   ANTHROPIC_API_KEY   Required for 'analyze' command
-  RAPIDAPI_KEY        Required for 'congress' command
+  RAPIDAPI_KEY        Required for 'congress' and 'backtest' commands
         """
     )
 
@@ -246,6 +276,11 @@ Environment Variables:
     sectors_parser.add_argument('holdings', nargs='+',
                                help='Holdings as TICKER:SHARES (e.g., AAPL:100)')
 
+    # backtest command
+    backtest_parser = subparsers.add_parser('backtest', help='Backtest congressional trading strategy')
+    backtest_parser.add_argument('--windows', '-w', type=str, default='30,60,90',
+                                help='Comma-separated return windows in days (default: 30,60,90)')
+
     args = parser.parse_args()
 
     if args.command == 'analyze':
@@ -258,6 +293,8 @@ Environment Variables:
         cmd_portfolio(args.tickers)
     elif args.command == 'sectors':
         cmd_sectors(args.holdings)
+    elif args.command == 'backtest':
+        cmd_backtest(args.windows)
     else:
         parser.print_help()
 
