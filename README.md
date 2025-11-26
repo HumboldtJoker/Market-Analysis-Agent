@@ -135,6 +135,34 @@ result = agent.run_collaborative(
 
 **Philosophy:** Augmentation over replacement - combining AI breadth with human depth.
 
+### Congressional Trades Aggregate Analysis - NEW!
+
+**Turning delayed individual trades into actionable trend signals**
+
+Individual congressional trades are disclosed 0-45 days after execution (STOCK Act requirement), making them too delayed for active trading. But **aggregate patterns across multiple Congress members reveal valuable trends**:
+
+```python
+from congressional_trades_aggregate import get_aggregate_analysis
+
+# Analyze recent congressional trading patterns
+result = get_aggregate_analysis(api_key=os.environ["RAPIDAPI_KEY"])
+print(result['summary'])
+```
+
+**What it reveals:**
+- **Sector trends**: Which sectors Congress is accumulating vs liquidating
+- **Stock-specific patterns**: Stocks with multiple members trading same direction
+- **Partisan divergences**: Where Democrats and Republicans trade opposite directions
+- **Recent activity trends**: Accelerating vs decelerating interest
+
+**Example insights:**
+- "Financial Services sector: +4 net (8 buys, 4 sells) across 2 politicians"
+- "American Express: Democrats buying (3/0), Republicans selling (1/2)"
+- "Technology: Selective - AVGO/TSM/DELL all buys, AMD/TXN all sells"
+
+**Key difference from individual trades:**
+Individual delayed trades = noise. Patterns across 535 members = signal. Focus on high-conviction stocks where multiple Congress members are trading in the same direction.
+
 ## 📖 Documentation
 
 ### Available Tools
@@ -153,7 +181,8 @@ result = agent.run_collaborative(
 |------|-------------|-------------|
 | `technical_indicators` | SMA (20/50/200), RSI(14), MACD, Bollinger Bands | Yahoo Finance |
 | `news_sentiment` | Financial sentiment from recent news articles | Yahoo Finance News |
-| `congressional_trades` | STOCK Act disclosures (House & Senate) | RapidAPI |
+| `congressional_trades` | Individual STOCK Act disclosures (House & Senate) | RapidAPI |
+| `congressional_trades_aggregate` | **NEW!** Aggregate trend analysis across Congress (sector trends, partisan divergence) | RapidAPI |
 | `portfolio_correlation` | Correlation matrix, diversification scoring, beta vs S&P 500 | Yahoo Finance |
 | `sector_allocation` | Sector exposure, concentration risk, benchmark comparison | Yahoo Finance |
 | `risk_manager` | Automated stop-losses with 8 safety mechanisms | Integrated |
