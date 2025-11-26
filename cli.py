@@ -197,6 +197,22 @@ def cmd_sectors(holdings: List[str]):
         print(result['summary'])
 
 
+def cmd_sec(ticker: str, query: str = None):
+    """Analyze SEC filings for a company"""
+    from sec_filings_rag import analyze_sec_filings
+
+    print(f"\nAnalyzing SEC filings for {ticker}...")
+    if query:
+        print(f"Query: {query}\n")
+
+    result = analyze_sec_filings(ticker, query=query)
+
+    if "error" in result:
+        print(f"ERROR: {result['error']}")
+    else:
+        print(result['summary'])
+
+
 def cmd_backtest(windows_str: str = "30,60,90"):
     """Backtest congressional trading strategy"""
     from backtesting import run_backtest_from_api, format_backtest_report
@@ -240,6 +256,8 @@ Examples:
   python cli.py portfolio AAPL MSFT GOOGL       Portfolio correlation analysis
   python cli.py sectors AAPL:100 JPM:50         Sector allocation analysis
   python cli.py backtest                        Backtest congressional trading strategy
+  python cli.py sec NVDA                        SEC filings analysis (10-K, 10-Q)
+  python cli.py sec AAPL -q "risk factors"      Search SEC filings with query
 
 Environment Variables:
   ANTHROPIC_API_KEY   Required for 'analyze' command
@@ -281,6 +299,12 @@ Environment Variables:
     backtest_parser.add_argument('--windows', '-w', type=str, default='30,60,90',
                                 help='Comma-separated return windows in days (default: 30,60,90)')
 
+    # sec command
+    sec_parser = subparsers.add_parser('sec', help='Analyze SEC filings (10-K, 10-Q, 8-K)')
+    sec_parser.add_argument('ticker', help='Stock ticker symbol')
+    sec_parser.add_argument('--query', '-q', type=str, default=None,
+                           help='Natural language query to search filings')
+
     args = parser.parse_args()
 
     if args.command == 'analyze':
@@ -295,6 +319,8 @@ Environment Variables:
         cmd_sectors(args.holdings)
     elif args.command == 'backtest':
         cmd_backtest(args.windows)
+    elif args.command == 'sec':
+        cmd_sec(args.ticker, args.query)
     else:
         parser.print_help()
 
