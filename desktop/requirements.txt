@@ -1,0 +1,12 @@
+# AutoInvestor Desktop Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Native window
+pywebview>=4.4.0
+
+# Build tools (for creating executable)
+pyinstaller>=6.0.0

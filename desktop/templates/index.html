@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoInvestor - AI-Powered Investment Research</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --border: #30363d;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .status-indicators {
+            display: flex;
+            gap: 15px;
+        }
+
+        .status-dot {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .dot.active { background: var(--success); }
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 25px;
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.95rem;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab:hover { color: var(--text-primary); }
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        input[type="text"]::placeholder {
+            color: var(--text-secondary);
+        }
+
+        button {
+            padding: 12px 24px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover { background: var(--accent-hover); }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .results {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 300px;
+        }
+
+        .results pre {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: var(--text-primary);
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+        }
+
+        .disclaimer {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--warning);
+            padding: 12px 16px;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .regime-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .regime-BULLISH { background: var(--success); color: #000; }
+        .regime-NEUTRAL { background: var(--text-secondary); color: #000; }
+        .regime-CAUTIOUS { background: var(--warning); color: #000; }
+        .regime-BEARISH { background: #f0883e; color: #000; }
+        .regime-CRITICAL { background: var(--danger); color: #fff; }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .metric:last-child { border-bottom: none; }
+
+        .metric-label { color: var(--text-secondary); }
+        .metric-value { font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AutoInvestor</h1>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <div class="status-indicators">
+                    <div class="status-dot" onclick="openSettings()" style="cursor: pointer;" title="Click to configure">
+                        <span class="dot" id="claude-status"></span>
+                        <span>Claude API</span>
+                    </div>
+                    <div class="status-dot" onclick="openSettings()" style="cursor: pointer;" title="Click to configure">
+                        <span class="dot" id="rapid-status"></span>
+                        <span>Congress Data</span>
+                    </div>
+                    <div class="status-dot" onclick="openSettings()" style="cursor: pointer;" title="Click to configure">
+                        <span class="dot" id="fred-status"></span>
+                        <span>Macro Data</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="openSettings()" style="padding: 8px 16px;">Settings</button>
+            </div>
+        </header>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 30px; width: 500px; max-width: 90%;">
+                <h2 style="margin-bottom: 20px; color: var(--accent);">API Settings</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                    Keys stored locally, sent only to their respective APIs.
+                </p>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem;">
+                        Anthropic API Key <a href="https://console.anthropic.com/" target="_blank" style="color: var(--accent);">(get key)</a>
+                    </label>
+                    <input type="password" id="setting-anthropic" placeholder="sk-ant-..." style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary);">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem;">
+                        RapidAPI Key <a href="https://rapidapi.com/politics-trackers-politics-trackers-default/api/politician-trade-tracker" target="_blank" style="color: var(--accent);">(get key)</a>
+                    </label>
+                    <input type="password" id="setting-rapidapi" placeholder="RapidAPI key..." style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary);">
+                </div>
+                <div style="margin-bottom: 25px;">
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem;">
+                        FRED API Key <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" style="color: var(--accent);">(get free key)</a>
+                    </label>
+                    <input type="password" id="setting-fred" placeholder="FRED API key..." style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary);">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
+                    <button onclick="saveSettings()">Save Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="analyze">Full Analysis</button>
+            <button class="tab" data-tab="technicals">Technicals</button>
+            <button class="tab" data-tab="congress">Congress</button>
+            <button class="tab" data-tab="portfolio">Portfolio</button>
+            <button class="tab" data-tab="macro">Macro Regime</button>
+            <button class="tab" data-tab="sec">SEC Filings</button>
+        </div>
+
+        <!-- Full Analysis Tab -->
+        <div id="analyze" class="tab-content active">
+            <div class="card">
+                <h3>AI-Powered Investment Analysis</h3>
+                <div class="input-group">
+                    <input type="text" id="analyze-ticker" placeholder="Enter ticker (e.g., NVDA)">
+                    <label style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary);">
+                        <input type="checkbox" id="collaborative-mode"> Collaborative Mode
+                    </label>
+                    <button onclick="runAnalysis()">Analyze</button>
+                </div>
+                <div class="results" id="analyze-results">
+                    <pre>Enter a ticker symbol and click Analyze to begin.
+
+This uses Claude AI to perform comprehensive ReAct analysis including:
+- Current price and trading data
+- Financial metrics and valuation
+- Technical indicators
+- News sentiment
+- Risk assessment
+
+Note: Full analysis takes 30-60 seconds.</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technicals Tab -->
+        <div id="technicals" class="tab-content">
+            <div class="card">
+                <h3>Technical Analysis</h3>
+                <div class="input-group">
+                    <input type="text" id="tech-ticker" placeholder="Enter ticker (e.g., AAPL)">
+                    <button onclick="runTechnicals()">Analyze</button>
+                </div>
+                <div class="results" id="tech-results">
+                    <pre>Enter a ticker to see technical indicators:
+- SMA (20, 50, 200 day)
+- RSI (14 day)
+- MACD
+- Bollinger Bands
+- Trend Analysis</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Congress Tab -->
+        <div id="congress" class="tab-content">
+            <div class="card">
+                <h3>Congressional Trading Activity</h3>
+                <div class="input-group">
+                    <input type="text" id="congress-ticker" placeholder="Ticker (optional for aggregate)">
+                    <button class="btn-secondary" onclick="runCongressAggregate()">Aggregate Trends</button>
+                    <button onclick="runCongressTicker()">Ticker Trades</button>
+                </div>
+                <div class="results" id="congress-results">
+                    <pre>Track STOCK Act disclosures from Congress members.
+
+Aggregate: See overall buying/selling patterns across all Congress.
+Ticker: See which politicians traded a specific stock.
+
+Requires RapidAPI key for Congress data.</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Tab -->
+        <div id="portfolio" class="tab-content">
+            <div class="card">
+                <h3>Portfolio Correlation Analysis</h3>
+                <div class="input-group">
+                    <input type="text" id="portfolio-tickers" placeholder="Tickers (space-separated, e.g., AAPL MSFT GOOGL)">
+                    <button onclick="runPortfolio()">Analyze</button>
+                </div>
+                <div class="results" id="portfolio-results">
+                    <pre>Enter 2+ tickers to analyze:
+- Correlation matrix
+- Diversification score
+- Beta vs S&P 500
+- Concentration risks</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Macro Tab -->
+        <div id="macro" class="tab-content">
+            <div class="card">
+                <h3>Macro Economic Regime</h3>
+                <button onclick="runMacro()">Check Market Regime</button>
+                <div class="results" id="macro-results" style="margin-top: 15px;">
+                    <pre>Analyze macroeconomic conditions:
+- Yield Curve (recession indicator)
+- VIX (fear gauge)
+- Credit Spreads (stress indicator)
+- Fed Funds Rate
+- Unemployment
+
+Returns risk modifier for position sizing.
+Requires FRED API key.</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEC Tab -->
+        <div id="sec" class="tab-content">
+            <div class="card">
+                <h3>SEC Filings Analysis</h3>
+                <div class="input-group">
+                    <input type="text" id="sec-ticker" placeholder="Ticker (e.g., AAPL)">
+                    <input type="text" id="sec-query" placeholder="Search query (optional)">
+                    <button onclick="runSEC()">Search Filings</button>
+                </div>
+                <div class="results" id="sec-results">
+                    <pre>Search and analyze SEC filings:
+- 10-K (Annual reports)
+- 10-Q (Quarterly reports)
+- 8-K (Material events)
+
+Enter a query to search specific topics like:
+"risk factors", "revenue breakdown", "litigation"</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="disclaimer">
+            <strong>Disclaimer:</strong> This tool is for educational and research purposes only.
+            Not financial advice. Always consult a licensed financial advisor before making investment decisions.
+        </div>
+
+        <footer>
+            AutoInvestor v2.0 | Built by Lyra & Thomas | Coalition
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = '';
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        // Check API status on load
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/api/health`);
+                const data = await res.json();
+                document.getElementById('claude-status').classList.toggle('active', data.anthropic_key);
+                document.getElementById('rapid-status').classList.toggle('active', data.rapidapi_key);
+                document.getElementById('fred-status').classList.toggle('active', data.fred_key);
+            } catch (e) {
+                console.error('Health check failed:', e);
+            }
+        }
+        checkHealth();
+
+        function showLoading(elementId) {
+            document.getElementById(elementId).innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>Loading...</span>
+                </div>`;
+        }
+
+        function showResult(elementId, data) {
+            const el = document.getElementById(elementId);
+            if (data.error) {
+                el.innerHTML = `<pre style="color: var(--danger);">Error: ${data.error}</pre>`;
+            } else if (data.summary) {
+                el.innerHTML = `<pre>${data.summary}</pre>`;
+            } else if (data.formatted_report) {
+                el.innerHTML = `<pre>${data.formatted_report}</pre>`;
+            } else if (data.answer) {
+                el.innerHTML = `<pre>${data.answer}</pre>`;
+            } else {
+                el.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+        }
+
+        async function runAnalysis() {
+            const ticker = document.getElementById('analyze-ticker').value.trim();
+            const collaborative = document.getElementById('collaborative-mode').checked;
+            if (!ticker) return alert('Please enter a ticker');
+
+            showLoading('analyze-results');
+            try {
+                const res = await fetch(`${API_BASE}/api/analyze/${ticker}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({collaborative})
+                });
+                const data = await res.json();
+                showResult('analyze-results', data);
+            } catch (e) {
+                showResult('analyze-results', {error: e.message});
+            }
+        }
+
+        async function runTechnicals() {
+            const ticker = document.getElementById('tech-ticker').value.trim();
+            if (!ticker) return alert('Please enter a ticker');
+
+            showLoading('tech-results');
+            try {
+                const res = await fetch(`${API_BASE}/api/technicals/${ticker}`);
+                const data = await res.json();
+                showResult('tech-results', data);
+            } catch (e) {
+                showResult('tech-results', {error: e.message});
+            }
+        }
+
+        async function runCongressAggregate() {
+            showLoading('congress-results');
+            try {
+                const res = await fetch(`${API_BASE}/api/congress/aggregate`);
+                const data = await res.json();
+                showResult('congress-results', data);
+            } catch (e) {
+                showResult('congress-results', {error: e.message});
+            }
+        }
+
+        async function runCongressTicker() {
+            const ticker = document.getElementById('congress-ticker').value.trim();
+            if (!ticker) return alert('Please enter a ticker');
+
+            showLoading('congress-results');
+            try {
+                const res = await fetch(`${API_BASE}/api/congress/${ticker}`);
+                const data = await res.json();
+                showResult('congress-results', data);
+            } catch (e) {
+                showResult('congress-results', {error: e.message});
+            }
+        }
+
+        async function runPortfolio() {
+            const tickers = document.getElementById('portfolio-tickers').value.trim().split(/\s+/);
+            if (tickers.length < 2) return alert('Please enter at least 2 tickers');
+
+            showLoading('portfolio-results');
+            try {
+                const res = await fetch(`${API_BASE}/api/portfolio`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({tickers})
+                });
+                const data = await res.json();
+                showResult('portfolio-results', data);
+            } catch (e) {
+                showResult('portfolio-results', {error: e.message});
+            }
+        }
+
+        async function runMacro() {
+            showLoading('macro-results');
+            try {
+                const res = await fetch(`${API_BASE}/api/macro`);
+                const data = await res.json();
+                showResult('macro-results', data);
+            } catch (e) {
+                showResult('macro-results', {error: e.message});
+            }
+        }
+
+        async function runSEC() {
+            const ticker = document.getElementById('sec-ticker').value.trim();
+            const query = document.getElementById('sec-query').value.trim();
+            if (!ticker) return alert('Please enter a ticker');
+
+            showLoading('sec-results');
+            try {
+                let url = `${API_BASE}/api/sec/${ticker}`;
+                if (query) url += `?query=${encodeURIComponent(query)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                showResult('sec-results', data);
+            } catch (e) {
+                showResult('sec-results', {error: e.message});
+            }
+        }
+
+        // Allow Enter key to submit
+        document.querySelectorAll('input[type="text"]').forEach(input => {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const btn = input.closest('.input-group').querySelector('button:last-child');
+                    if (btn) btn.click();
+                }
+            });
+        });
+
+        // Settings modal functions
+        function openSettings() {
+            document.getElementById('settings-modal').style.display = 'flex';
+            loadSettings();
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (data.anthropic_key) document.getElementById('setting-anthropic').value = data.anthropic_key;
+                if (data.rapidapi_key) document.getElementById('setting-rapidapi').value = data.rapidapi_key;
+                if (data.fred_key) document.getElementById('setting-fred').value = data.fred_key;
+            } catch (e) {
+                console.log('No saved settings');
+            }
+        }
+
+        async function saveSettings() {
+            const settings = {
+                anthropic_key: document.getElementById('setting-anthropic').value,
+                rapidapi_key: document.getElementById('setting-rapidapi').value,
+                fred_key: document.getElementById('setting-fred').value
+            };
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(settings)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeSettings();
+                    checkHealth();
+                    alert('Settings saved! API keys are now active.');
+                } else {
+                    alert('Error saving settings: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error saving settings: ' + e.message);
+            }
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeSettings();
+        });
+
+        // Close modal on backdrop click
+        document.getElementById('settings-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'settings-modal') closeSettings();
+        });
+    </script>
+</body>
+</html>
