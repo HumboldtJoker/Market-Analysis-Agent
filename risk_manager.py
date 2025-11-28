@@ -12,6 +12,13 @@ from datetime import datetime, time as dt_time
 import pytz
 import logging
 
+# Optional macro agent integration
+try:
+    from macro_agent import MacroAgent
+    HAS_MACRO_AGENT = True
+except ImportError:
+    HAS_MACRO_AGENT = False
+
 
 class RiskManager:
     """
@@ -27,7 +34,8 @@ class RiskManager:
 
     def __init__(self, investor_profile: Optional[InvestorProfile] = None,
                  enable_auto_execute: bool = False,
-                 order_executor=None):
+                 order_executor=None,
+                 enable_macro_overlay: bool = True):
         """
         Initialize risk manager
 
@@ -35,8 +43,21 @@ class RiskManager:
             investor_profile: Optional investor profile for personalized risk settings
             enable_auto_execute: Enable automated stop-loss execution (default: False)
             order_executor: OrderExecutor instance for executing trades (required if enable_auto_execute=True)
+            enable_macro_overlay: Enable macro economic regime adjustments (default: True)
         """
         self.profile = investor_profile
+
+        # Macro agent for market regime detection
+        self.enable_macro_overlay = enable_macro_overlay
+        self.macro_agent = None
+        if enable_macro_overlay and HAS_MACRO_AGENT:
+            try:
+                self.macro_agent = MacroAgent()
+                if self.macro_agent.fred is None:
+                    self.logger = logging.getLogger(__name__)
+                    self.logger.warning("MacroAgent initialized but FRED API unavailable")
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Failed to initialize MacroAgent: {e}")
 
         # Auto-execution settings
         self.enable_auto_execute = enable_auto_execute
@@ -84,7 +105,8 @@ class RiskManager:
     def calculate_position_size(self, portfolio_value: float,
                                ticker: str,
                                current_price: float,
-                               risk_per_trade: Optional[float] = None) -> Dict:
+                               risk_per_trade: Optional[float] = None,
+                               apply_macro_overlay: bool = True) -> Dict:
         """
         Calculate recommended position size for a trade
 
@@ -93,6 +115,7 @@ class RiskManager:
             ticker: Stock symbol
             current_price: Current stock price
             risk_per_trade: Optional risk amount per trade (defaults to 1% of portfolio)
+            apply_macro_overlay: Whether to apply macro regime adjustment (default: True)
 
         Returns:
             Dict with recommended shares and position details
@@ -103,6 +126,23 @@ class RiskManager:
         # Calculate maximum dollar amount for this position
         max_position_dollars = portfolio_value * self.max_position_size
 
+        # Apply macro overlay if enabled
+        macro_modifier = 1.0
+        macro_regime = None
+        macro_recommendation = None
+
+        if apply_macro_overlay and self.macro_agent and self.enable_macro_overlay:
+            try:
+                regime_data = self.macro_agent.get_market_regime()
+                macro_modifier = regime_data.get('risk_modifier', 1.0)
+                macro_regime = regime_data.get('regime', 'UNKNOWN')
+                macro_recommendation = regime_data.get('recommendation', '')
+
+                # Apply the modifier to position size
+                max_position_dollars = max_position_dollars * macro_modifier
+            except Exception as e:
+                self.logger.warning(f"Macro overlay failed, using default: {e}")
+
         # Calculate shares based on price
         max_shares = int(max_position_dollars / current_price)
 
@@ -110,7 +150,7 @@ class RiskManager:
         position_value = max_shares * current_price
         position_pct = (position_value / portfolio_value) * 100 if portfolio_value > 0 else 0
 
-        return {
+        result = {
             "ticker": ticker,
             "recommended_shares": max_shares,
             "position_value": round(position_value, 2),
@@ -119,6 +159,20 @@ class RiskManager:
             "current_price": round(current_price, 2),
             "portfolio_value": round(portfolio_value, 2)
         }
+
+        # Add macro overlay info if applied
+        if macro_modifier != 1.0 or macro_regime:
+            result["macro_overlay"] = {
+                "applied": True,
+                "regime": macro_regime,
+                "modifier": macro_modifier,
+                "recommendation": macro_recommendation,
+                "unadjusted_shares": int((portfolio_value * self.max_position_size) / current_price)
+            }
+        else:
+            result["macro_overlay"] = {"applied": False}
+
+        return result
 
     def validate_order(self, action: str, ticker: str, quantity: int,
                       price: float, portfolio_value: float,
@@ -440,6 +494,25 @@ class RiskManager:
             "daily_starting_value": round(self.daily_starting_value, 2) if self.daily_starting_value else None
         }
 
+        # Add macro overlay info
+        if self.enable_macro_overlay and self.macro_agent:
+            try:
+                regime_data = self.macro_agent.get_market_regime()
+                summary["macro_overlay"] = {
+                    "enabled": True,
+                    "regime": regime_data.get('regime', 'UNKNOWN'),
+                    "risk_modifier": regime_data.get('risk_modifier', 1.0),
+                    "recommendation": regime_data.get('recommendation', ''),
+                    "warnings": regime_data.get('warnings', [])
+                }
+            except Exception as e:
+                summary["macro_overlay"] = {
+                    "enabled": True,
+                    "error": str(e)
+                }
+        else:
+            summary["macro_overlay"] = {"enabled": False}
+
         # Add auto-execute info if enabled
         if self.enable_auto_execute:
             summary.update({
@@ -456,6 +529,20 @@ class RiskManager:
             summary["auto_execute_enabled"] = False
 
         return summary
+
+    def get_macro_report(self) -> Optional[str]:
+        """
+        Get formatted macro economic report
+
+        Returns:
+            Formatted string report or None if macro agent not available
+        """
+        if not self.macro_agent:
+            return None
+        try:
+            return self.macro_agent.format_report()
+        except Exception as e:
+            return f"Error generating macro report: {e}"
 
 
 if __name__ == "__main__":

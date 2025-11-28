@@ -17,6 +17,7 @@ An intelligent investment research and trading agent that uses Claude AI with Re
 - **🔗 Portfolio Correlation**: Diversification analysis with entropy-based scoring
 - **🎯 Sector Allocation**: Concentration risk detection vs S&P 500 benchmarks
 - **🛡️ Advanced Risk Management**: 8-layer safety system for automated stop-losses
+- **🌍 Macro Economic Overlay**: Market regime detection using FRED data (yield curve, VIX, credit spreads)
 
 ### Core Platform
 - **🤖 AI-Powered Analysis**: Uses Claude Sonnet 4.5 with ReAct reasoning
@@ -36,7 +37,7 @@ An intelligent investment research and trading agent that uses Claude AI with Re
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/autoinvestor.git
+git clone https://github.com/HumboldtJoker/autoinvestor.git
 cd autoinvestor
 
 # Install dependencies
@@ -163,6 +164,62 @@ print(result['summary'])
 **Key difference from individual trades:**
 Individual delayed trades = noise. Patterns across 535 members = signal. Focus on high-conviction stocks where multiple Congress members are trading in the same direction.
 
+### Macro Economic Overlay - NEW!
+
+**Market regime detection that automatically adjusts position sizing**
+
+Technical analysis tells you about individual stocks. Macro analysis tells you whether you should be buying stocks at all.
+
+```python
+from macro_agent import MacroAgent
+
+# Get current market regime
+agent = MacroAgent()  # Requires FRED_API_KEY env var
+regime = agent.get_market_regime()
+
+print(f"Regime: {regime['regime']}")
+print(f"Risk Modifier: {regime['risk_modifier']}")
+print(f"Recommendation: {regime['recommendation']}")
+
+# Get formatted report
+print(agent.format_report())
+```
+
+**Indicators analyzed:**
+- **Yield Curve (T10Y2Y)**: Inverted curve = recession signal
+- **VIX**: Fear gauge - high volatility indicates risk
+- **Credit Spreads**: Stress in corporate bond markets
+- **Fed Funds Rate**: Monetary policy tightness
+- **Unemployment**: Labor market health
+
+**Risk modifiers:**
+| Regime | Modifier | Action |
+|--------|----------|--------|
+| BULLISH | 1.0 | Full position sizes |
+| NEUTRAL | 0.75 | Moderate caution |
+| CAUTIOUS | 0.5 | Half positions |
+| BEARISH | 0.25 | Minimal exposure |
+| CRITICAL | 0.0 | Cash only |
+
+**Integration with RiskManager:**
+```python
+from risk_manager import RiskManager
+
+rm = RiskManager(enable_macro_overlay=True)
+
+# Position sizing now automatically adjusts based on macro conditions
+position = rm.calculate_position_size(
+    portfolio_value=100000,
+    ticker="AAPL",
+    current_price=180.0
+)
+
+print(position['recommended_shares'])
+print(position['macro_overlay'])  # Shows regime and adjustment
+```
+
+**Setup:** Get a free FRED API key from https://fred.stlouisfed.org/docs/api/api_key.html
+
 ## 📖 Documentation
 
 ### Available Tools
@@ -186,6 +243,7 @@ Individual delayed trades = noise. Patterns across 535 members = signal. Focus o
 | `portfolio_correlation` | Correlation matrix, diversification scoring, beta vs S&P 500 | Yahoo Finance |
 | `sector_allocation` | Sector exposure, concentration risk, benchmark comparison | Yahoo Finance |
 | `risk_manager` | Automated stop-losses with 8 safety mechanisms | Integrated |
+| `macro_agent` | **NEW!** Market regime detection - adjusts position sizing based on macro conditions | FRED API |
 
 ### Investor Profile Questions
 

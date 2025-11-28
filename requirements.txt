@@ -9,3 +9,6 @@ alpaca-py>=0.43.0
 
 # Optional but recommended
 python-dotenv>=1.0.0  # For .env file support
+
+# Macro economic analysis (optional - for macro regime detection)
+fredapi>=0.5.0  # FRED API - get free key at https://fred.stlouisfed.org/docs/api/api_key.html

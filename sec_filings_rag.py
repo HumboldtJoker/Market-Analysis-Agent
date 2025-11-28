@@ -43,7 +43,6 @@ except ImportError:
 
 
 # SEC EDGAR API configuration
-SEC_EDGAR_BASE = "https://www.sec.gov"
 SEC_EDGAR_SUBMISSIONS = "https://data.sec.gov/submissions"
 SEC_EDGAR_FILINGS = "https://www.sec.gov/Archives/edgar/data"
 
