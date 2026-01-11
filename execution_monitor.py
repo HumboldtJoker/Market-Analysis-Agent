@@ -16,11 +16,16 @@ Pure Python implementation with ZERO LLM costs:
 
 import time
 import json
+import os
 from datetime import datetime, time as dt_time
 from pathlib import Path
 import pytz
 import logging
 from typing import Dict, List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from order_executor import OrderExecutor
 from risk_manager import RiskManager
@@ -43,12 +48,12 @@ token_log_path = Path('token_usage.log')
 class ExecutionMonitor:
     """Autonomous trading execution monitor"""
 
-    def __init__(self, mode: str = "paper", check_interval_seconds: int = 300):
+    def __init__(self, mode: str = "live", check_interval_seconds: int = 300):
         """
         Initialize execution monitor
 
         Args:
-            mode: 'paper' or 'live' trading mode
+            mode: 'live' uses Alpaca API (set ALPACA_PAPER=true for paper mode)
             check_interval_seconds: Seconds between checks (default: 300 = 5 minutes)
         """
         self.mode = mode
@@ -343,8 +348,8 @@ def main():
     Press Ctrl+C to stop monitoring
     """)
 
-    # Initialize and start monitoring
-    monitor = ExecutionMonitor(mode="paper", check_interval_seconds=300)
+    # Initialize and start monitoring (mode="live" uses Alpaca Paper API via ALPACA_PAPER=true)
+    monitor = ExecutionMonitor(mode="live", check_interval_seconds=300)
 
     try:
         monitor.monitoring_loop()
