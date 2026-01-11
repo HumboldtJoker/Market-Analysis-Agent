@@ -9,7 +9,11 @@
       "Bash(python execution_monitor.py:*)",
       "Bash(py execution_monitor.py:*)",
       "Bash(git add:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd Fractional Shares & Autonomous Execution Monitor\n\nCore Changes:\n- Enable fractional share trading \\(order_executor.py, portfolio_manager.py\\)\n- Add autonomous execution monitor with zero LLM costs \\(execution_monitor.py\\)\n- Pure Python rule-based monitoring \\(stop-losses, dip-buying\\)\n- 5-minute interval checks during market hours\n\nMCP Integration:\n- Complete MCP server setup for Claude Code integration\n- 4 analysis tools: analyze_stock, technical_analysis, portfolio_analysis, macro_analysis\n- AutoInvestor agent configuration \\(.claude/ settings\\)\n\nPortfolio Management:\n- Trading strategy documentation \\(trading_strategy.md\\)\n- Portfolio state tracking \\(portfolio_state.json\\)\n- Launcher scripts for paper and live trading\n\nArchitecture:\n- Strategy Agent: Claude Sonnet 4.5 for complex analysis \\(~$3/year\\)\n- Execution Monitor: Pure Python for continuous monitoring \\($0/year\\)\n- Two-agent system with mandatory weekly human reviews\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)",
+      "Bash(git push)",
+      "Bash(echo:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
