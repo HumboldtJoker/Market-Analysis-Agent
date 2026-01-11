@@ -1,0 +1,31 @@
+{
+  "name": "market-analysis-agent",
+  "version": "1.0.0",
+  "description": "> **PHASE 2 COMPLETE**: Production-ready analysis tools with paper/live trading capabilities. Comprehensive safety mechanisms validated. See [Deployment Guide](#deployment) for phased rollout recommendations.",
+  "main": "mcp_server.js",
+  "type": "module",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HumboldtJoker/Market-Analysis-Agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HumboldtJoker/Market-Analysis-Agent/issues"
+  },
+  "homepage": "https://github.com/HumboldtJoker/Market-Analysis-Agent#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "madge": "^8.0.0"
+  }
+}

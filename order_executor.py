@@ -113,7 +113,7 @@ class OrderExecutor:
         except Exception as e:
             raise ValueError(f"Error fetching price for {ticker}: {str(e)}")
 
-    def execute_order(self, ticker: str, action: str, quantity: int,
+    def execute_order(self, ticker: str, action: str, quantity: float,
                      order_type: str = "market", limit_price: Optional[float] = None) -> Dict:
         """
         Execute a buy or sell order
@@ -121,7 +121,7 @@ class OrderExecutor:
         Args:
             ticker: Stock symbol
             action: 'BUY' or 'SELL'
-            quantity: Number of shares
+            quantity: Number of shares (fractional shares supported for market orders)
             order_type: 'market' or 'limit' (default: 'market')
             limit_price: Price for limit orders (ignored for market orders)
 
@@ -144,7 +144,7 @@ class OrderExecutor:
         else:
             return self._execute_live_order(ticker, action, quantity, order_type, limit_price)
 
-    def _execute_paper_order(self, ticker: str, action: str, quantity: int,
+    def _execute_paper_order(self, ticker: str, action: str, quantity: float,
                             order_type: str, limit_price: Optional[float]) -> Dict:
         """Execute order in paper mode (simulated)"""
 
@@ -226,7 +226,7 @@ class OrderExecutor:
                 "quantity": quantity
             }
 
-    def _execute_live_order(self, ticker: str, action: str, quantity: int,
+    def _execute_live_order(self, ticker: str, action: str, quantity: float,
                            order_type: str, limit_price: Optional[float]) -> Dict:
         """Execute order in live mode via Alpaca API"""
 
@@ -325,7 +325,7 @@ class OrderExecutor:
             # Add positions from Alpaca
             for pos in alpaca_positions:
                 ticker = pos.symbol
-                quantity = int(pos.qty)
+                quantity = float(pos.qty)
                 avg_cost = float(pos.avg_entry_price)
                 current_price = float(pos.current_price)
 

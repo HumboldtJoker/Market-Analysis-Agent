@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__market-analysis-agent__analyze_stock",
+      "mcp__market-analysis-agent__technical_analysis",
+      "mcp__market-analysis-agent__portfolio_analysis",
+      "mcp__market-analysis-agent__macro_analysis",
+      "Bash(py -c:*)",
+      "Bash(python execution_monitor.py:*)",
+      "Bash(py execution_monitor.py:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "market-analysis-agent"
+  ]
+}

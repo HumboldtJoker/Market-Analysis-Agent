@@ -1,0 +1,65 @@
+{
+  "cash": 0.694872250000004,
+  "initial_cash": 100.0,
+  "positions": {
+    "NVDA": {
+      "ticker": "NVDA",
+      "quantity": 0.25,
+      "avg_cost": 184.91741249999998,
+      "current_price": 184.825
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "quantity": 1.25,
+      "avg_cost": 27.4137,
+      "current_price": 27.4
+    },
+    "SNAP": {
+      "ticker": "SNAP",
+      "quantity": 1.5,
+      "avg_cost": 8.214105,
+      "current_price": 8.21
+    },
+    "AAPL": {
+      "ticker": "AAPL",
+      "quantity": 0.025,
+      "avg_cost": 259.499685,
+      "current_price": 259.499685
+    }
+  },
+  "trade_history": [
+    {
+      "timestamp": "2026-01-11T12:33:52.437797",
+      "ticker": "NVDA",
+      "action": "BUY",
+      "quantity": 0.25,
+      "price": 184.91741249999998,
+      "commission": 0.0
+    },
+    {
+      "timestamp": "2026-01-11T12:33:52.617315",
+      "ticker": "SOFI",
+      "action": "BUY",
+      "quantity": 1.25,
+      "price": 27.4137,
+      "commission": 0.0
+    },
+    {
+      "timestamp": "2026-01-11T12:33:52.800116",
+      "ticker": "SNAP",
+      "action": "BUY",
+      "quantity": 1.5,
+      "price": 8.214105,
+      "commission": 0.0
+    },
+    {
+      "timestamp": "2026-01-11T12:33:52.980295",
+      "ticker": "AAPL",
+      "action": "BUY",
+      "quantity": 0.025,
+      "price": 259.499685,
+      "commission": 0.0
+    }
+  ],
+  "last_updated": "2026-01-11T12:33:52.980321"
+}
