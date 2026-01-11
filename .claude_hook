@@ -1,0 +1,32 @@
+#!/bin/bash
+# AutoInvestor Auto-Load Hook
+# This file is sourced automatically when entering this directory
+
+# This hook should be called from your ~/.bashrc with something like:
+# PROMPT_COMMAND='check_autoinvestor_dir'
+#
+# function check_autoinvestor_dir() {
+#   if [[ -f ".claude_hook" && "$AUTOINVESTOR_LOADED" != "1" ]]; then
+#     source .claude_hook
+#   fi
+# }
+
+export AUTOINVESTOR_LOADED=1
+export CLAUDE_AGENT="autoinvestor"
+export CLAUDE_SETTINGS_SOURCES="project,user"
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🤖 AutoInvestor Environment Detected"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📊 Agent: AutoInvestor (Collaborative Mode)"
+echo "📂 Project: Market-Analysis-Agent"
+echo "🔧 Settings: .claude/settings.json"
+echo ""
+echo "To start AutoInvestor mode:"
+echo "  claude --setting-sources project"
+echo ""
+echo "Or use the startup script:"
+echo "  ./start_autoinvestor.sh"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""

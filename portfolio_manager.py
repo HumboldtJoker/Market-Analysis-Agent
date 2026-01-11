@@ -16,7 +16,7 @@ from pathlib import Path
 class Position:
     """Represents a stock position in the portfolio"""
     ticker: str
-    quantity: int
+    quantity: float
     avg_cost: float
     current_price: float = 0.0
 
@@ -49,7 +49,7 @@ class Trade:
     timestamp: str
     ticker: str
     action: str  # 'BUY' or 'SELL'
-    quantity: int
+    quantity: float
     price: float
     commission: float = 0.0
 
@@ -107,7 +107,7 @@ class PortfolioManager:
         else:
             raise ValueError(f"Invalid mode: {mode}. Must be 'paper' or 'live'")
 
-    def execute_trade(self, ticker: str, action: str, quantity: int,
+    def execute_trade(self, ticker: str, action: str, quantity: float,
                      price: float, commission: float = 0.0) -> Dict:
         """
         Execute a trade and update portfolio
@@ -115,7 +115,7 @@ class PortfolioManager:
         Args:
             ticker: Stock symbol
             action: 'BUY' or 'SELL'
-            quantity: Number of shares
+            quantity: Number of shares (fractional shares supported)
             price: Price per share
             commission: Trading commission (default 0 for Alpaca)
 
