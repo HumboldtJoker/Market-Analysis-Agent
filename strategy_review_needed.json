@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-01-13T13:38:08.590270",
+  "alert_type": "VIX_REGIME_CHANGE",
+  "vix_current": 21.5,
+  "vix_previous": 15.85,
+  "regime_current": "ELEVATED",
+  "regime_previous": "NORMAL",
+  "portfolio_snapshot": {
+    "total_value": 100000.41,
+    "cash": 99901.63,
+    "positions_count": 4,
+    "positions": [
+      {
+        "ticker": "AAPL",
+        "quantity": 0.025,
+        "avg_cost": 259.37,
+        "current_price": 260.92,
+        "market_value": 6.52,
+        "unrealized_pl": 0.04,
+        "unrealized_pl_percent": 0.6
+      },
+      {
+        "ticker": "NVDA",
+        "quantity": 0.25,
+        "avg_cost": 183.18,
+        "current_price": 185.47,
+        "market_value": 46.37,
+        "unrealized_pl": 0.57,
+        "unrealized_pl_percent": 1.25
+      },
+      {
+        "ticker": "SNAP",
+        "quantity": 1.5,
+        "avg_cost": 8.19,
+        "current_price": 8.02,
+        "market_value": 12.03,
+        "unrealized_pl": -0.26,
+        "unrealized_pl_percent": -2.08
+      },
+      {
+        "ticker": "SOFI",
+        "quantity": 1.25,
+        "avg_cost": 27.03,
+        "current_price": 27.09,
+        "market_value": 33.86,
+        "unrealized_pl": 0.07,
+        "unrealized_pl_percent": 0.22
+      }
+    ]
+  },
+  "status": "processed",
+  "processed_at": "2026-01-13T13:38:00",
+  "analyst": "AutoInvestor Strategy Agent (Claude Sonnet 4.5)",
+  "recommendations_logged": "trading_strategy.md"
+}

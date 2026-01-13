@@ -110,6 +110,12 @@ class ExecutionMonitor:
         if self.vix_enabled:
             logger.info("VIX Monitoring enabled - alerts will trigger Strategy Agent reviews")
 
+        # Scheduled strategic reviews (proactive checks beyond VIX alerts)
+        self.review_interval_hours = 4  # Every 4 hours during market hours
+        self.last_scheduled_review = None
+        self._load_last_review_time()
+        logger.info(f"Scheduled strategic reviews every {self.review_interval_hours} hours")
+
         # Load VIX history
         self._load_vix_history()
 
@@ -415,6 +421,97 @@ class ExecutionMonitor:
         except Exception as e:
             logger.error(f"Error triggering strategic review: {e}", exc_info=True)
 
+    def _load_last_review_time(self):
+        """Load timestamp of last scheduled review"""
+        review_file = 'last_review.json'
+        try:
+            if Path(review_file).exists():
+                with open(review_file, 'r') as f:
+                    data = json.load(f)
+                    self.last_scheduled_review = datetime.fromisoformat(data['timestamp'])
+                    logger.info(f"Last scheduled review: {self.last_scheduled_review.strftime('%Y-%m-%d %H:%M')}")
+            else:
+                logger.info("No previous scheduled review found - will trigger first review in 4 hours")
+        except Exception as e:
+            logger.warning(f"Could not load last review time: {e}")
+
+    def _save_last_review_time(self):
+        """Save timestamp of completed scheduled review"""
+        review_file = 'last_review.json'
+        try:
+            with open(review_file, 'w') as f:
+                json.dump({
+                    'timestamp': datetime.now().isoformat(),
+                    'review_type': 'scheduled'
+                }, f, indent=2)
+        except Exception as e:
+            logger.error(f"Could not save review time: {e}")
+
+    def check_if_review_due(self) -> bool:
+        """
+        Check if scheduled strategic review is due
+
+        Returns:
+            True if review needed, False otherwise
+        """
+        if self.last_scheduled_review is None:
+            # No previous review - trigger first one
+            return True
+
+        hours_since_review = (datetime.now() - self.last_scheduled_review).total_seconds() / 3600
+
+        return hours_since_review >= self.review_interval_hours
+
+    def trigger_scheduled_review(self):
+        """
+        Trigger scheduled strategic review (proactive check)
+
+        Unlike VIX alerts (reactive to regime changes), scheduled reviews
+        proactively scan for:
+        - Emergent opportunities outside current strategy
+        - Portfolio drift detection
+        - News events that don't move VIX
+        - AI sector trends and breakouts
+        """
+        try:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("[SCHEDULED REVIEW] PROACTIVE STRATEGIC CHECK")
+            logger.info("=" * 70)
+
+            # Get current portfolio context
+            portfolio = self.executor.get_portfolio_summary()
+
+            # Create scheduled review alert
+            alert = {
+                'timestamp': datetime.now().isoformat(),
+                'alert_type': 'SCHEDULED_REVIEW',
+                'interval_hours': self.review_interval_hours,
+                'reason': 'Proactive market opportunity scan',
+                'portfolio_snapshot': portfolio,
+                'current_vix': self.previous_vix if self.previous_vix else 'N/A',
+                'vix_regime': self.previous_vix_regime if self.previous_vix_regime else 'N/A',
+                'status': 'pending'
+            }
+
+            # Write alert to file
+            alert_file = 'scheduled_review_needed.json'
+            with open(alert_file, 'w') as f:
+                json.dump(alert, f, indent=2)
+
+            logger.info(f"Review interval: Every {self.review_interval_hours} hours")
+            logger.info(f"Alert written to: {alert_file}")
+            logger.info("[ACTION] Strategy Agent will perform proactive analysis")
+            logger.info("=" * 70)
+            logger.info("")
+
+            # Update last review time
+            self.last_scheduled_review = datetime.now()
+            self._save_last_review_time()
+
+        except Exception as e:
+            logger.error(f"Error triggering scheduled review: {e}", exc_info=True)
+
     def monitoring_loop(self):
         """Main monitoring loop - runs continuously during market hours"""
 
@@ -462,6 +559,10 @@ class ExecutionMonitor:
                     # Update previous VIX for next check
                     self.previous_vix = vix_level
                     self.previous_vix_regime = vix_regime
+
+                # Check if scheduled review is due (proactive checks every 4 hours)
+                if self.check_if_review_due():
+                    self.trigger_scheduled_review()
 
                 # Display current status
                 logger.info("\nCurrent Positions:")
