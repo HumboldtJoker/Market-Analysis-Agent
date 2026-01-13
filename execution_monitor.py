@@ -21,14 +21,23 @@ from datetime import datetime, time as dt_time
 from pathlib import Path
 import pytz
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
+import yfinance as yf
 
 # Load environment variables from .env file
 load_dotenv()
 
 from order_executor import OrderExecutor
 from risk_manager import RiskManager
+
+# Import strategy trigger for VIX-based reviews
+try:
+    from strategy_trigger import StrategyTrigger
+    STRATEGY_TRIGGER_AVAILABLE = True
+except ImportError:
+    STRATEGY_TRIGGER_AVAILABLE = False
+    print("WARNING: strategy_trigger module not available. VIX-based strategic reviews will be disabled.")
 
 # Setup logging
 logging.basicConfig(
@@ -43,6 +52,9 @@ logger = logging.getLogger(__name__)
 
 # Token usage tracking
 token_log_path = Path('token_usage.log')
+
+# VIX log path
+VIX_LOG_PATH = Path('vix_log.json')
 
 
 class ExecutionMonitor:
@@ -82,11 +94,31 @@ class ExecutionMonitor:
         self.check_count = 0
         self.tokens_used = 0
 
+        # VIX monitoring state
+        self.vix_enabled = STRATEGY_TRIGGER_AVAILABLE
+        self.previous_vix = None
+        self.previous_vix_regime = None
+        self.vix_thresholds = {
+            'CALM': (0, 15),
+            'NORMAL': (15, 20),
+            'ELEVATED': (20, 30),
+            'HIGH': (30, float('inf'))
+        }
+
+        # VIX monitoring enabled - alerts written to file for Strategy Agent
+        # No API calls needed - uses Claude Code session tokens
+        if self.vix_enabled:
+            logger.info("VIX Monitoring enabled - alerts will trigger Strategy Agent reviews")
+
+        # Load VIX history
+        self._load_vix_history()
+
         logger.info("=" * 70)
         logger.info("EXECUTION MONITOR INITIALIZED")
         logger.info(f"Mode: {mode}")
         logger.info(f"Check Interval: {check_interval_seconds} seconds")
         logger.info(f"Stop-Loss: -{self.stop_loss_pct * 100}%")
+        logger.info(f"VIX Monitoring: {'ENABLED' if self.vix_enabled else 'DISABLED'}")
         logger.info("=" * 70)
 
     def is_market_hours(self) -> bool:
@@ -219,6 +251,170 @@ class ExecutionMonitor:
 
         return actions
 
+    def _load_vix_history(self):
+        """Load VIX history from log file"""
+        if VIX_LOG_PATH.exists():
+            try:
+                with open(VIX_LOG_PATH, 'r') as f:
+                    vix_data = json.load(f)
+                    if vix_data and len(vix_data) > 0:
+                        last_entry = vix_data[-1]
+                        self.previous_vix = last_entry.get('vix')
+                        self.previous_vix_regime = last_entry.get('regime')
+                        logger.info(f"Loaded VIX history: Last VIX={self.previous_vix:.2f}, Regime={self.previous_vix_regime}")
+            except Exception as e:
+                logger.warning(f"Failed to load VIX history: {e}")
+        else:
+            # Initialize empty log
+            with open(VIX_LOG_PATH, 'w') as f:
+                json.dump([], f)
+            logger.info("Initialized new VIX log file")
+
+    def _save_vix_data(self, vix: float, regime: str):
+        """Save VIX data to log file"""
+        try:
+            # Load existing data
+            vix_log = []
+            if VIX_LOG_PATH.exists():
+                with open(VIX_LOG_PATH, 'r') as f:
+                    vix_log = json.load(f)
+
+            # Append new entry
+            vix_log.append({
+                'timestamp': datetime.now().isoformat(),
+                'vix': vix,
+                'regime': regime
+            })
+
+            # Keep only last 1000 entries
+            if len(vix_log) > 1000:
+                vix_log = vix_log[-1000:]
+
+            # Save
+            with open(VIX_LOG_PATH, 'w') as f:
+                json.dump(vix_log, f, indent=2)
+
+        except Exception as e:
+            logger.error(f"Failed to save VIX data: {e}")
+
+    def get_vix_regime(self, vix: float) -> str:
+        """
+        Determine VIX regime based on level
+
+        Args:
+            vix: Current VIX level
+
+        Returns:
+            Regime name (CALM, NORMAL, ELEVATED, HIGH)
+        """
+        for regime, (low, high) in self.vix_thresholds.items():
+            if low <= vix < high:
+                return regime
+        return 'HIGH'  # Default if above all thresholds
+
+    def check_vix_regime(self) -> Optional[Tuple[float, str, bool]]:
+        """
+        Check current VIX level and regime, detect threshold crossings
+
+        Returns:
+            Tuple of (vix_level, regime, threshold_crossed) or None if failed
+        """
+        if not self.vix_enabled:
+            return None
+
+        try:
+            # Fetch VIX from Yahoo Finance
+            vix_ticker = yf.Ticker("^VIX")
+            vix_data = vix_ticker.history(period="1d")
+
+            if vix_data.empty:
+                logger.warning("Failed to fetch VIX data")
+                return None
+
+            # Get latest VIX value
+            vix_level = float(vix_data['Close'].iloc[-1])
+
+            # Determine regime
+            current_regime = self.get_vix_regime(vix_level)
+
+            # Check for threshold crossing
+            threshold_crossed = False
+            if self.previous_vix is not None and self.previous_vix_regime is not None:
+                # Check for major regime changes
+                if self.previous_vix_regime != current_regime:
+                    # Significant regime changes that warrant review:
+                    # - Any transition to/from ELEVATED or HIGH
+                    # - Moving up: NORMAL → ELEVATED, ELEVATED → HIGH
+                    # - Moving down: HIGH → ELEVATED, ELEVATED → NORMAL
+                    significant_changes = [
+                        ('NORMAL', 'ELEVATED'),
+                        ('ELEVATED', 'HIGH'),
+                        ('HIGH', 'ELEVATED'),
+                        ('ELEVATED', 'NORMAL'),
+                        ('CALM', 'NORMAL'),
+                        ('NORMAL', 'CALM')
+                    ]
+
+                    if (self.previous_vix_regime, current_regime) in significant_changes:
+                        threshold_crossed = True
+                        logger.warning(f"[VIX REGIME CHANGE] {self.previous_vix_regime} → {current_regime}")
+
+            # Log VIX data
+            logger.info(f"VIX: {vix_level:.2f} (Regime: {current_regime})")
+            self._save_vix_data(vix_level, current_regime)
+
+            return (vix_level, current_regime, threshold_crossed)
+
+        except Exception as e:
+            logger.error(f"Error checking VIX regime: {e}")
+            return None
+
+    def trigger_strategic_review_for_vix(self, vix_level: float, regime: str):
+        """
+        Create alert for strategic review based on VIX regime change
+
+        Instead of calling Anthropic API, writes alert to file for Strategy Agent
+        to process during regular check-ins (uses Claude Code session tokens)
+
+        Args:
+            vix_level: Current VIX level
+            regime: Current regime
+        """
+        try:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("[VIX ALERT] REGIME CHANGE DETECTED - STRATEGIC REVIEW NEEDED")
+            logger.info("=" * 70)
+
+            # Get current portfolio context
+            portfolio = self.executor.get_portfolio_summary()
+
+            # Create alert for Strategy Agent
+            alert = {
+                'timestamp': datetime.now().isoformat(),
+                'alert_type': 'VIX_REGIME_CHANGE',
+                'vix_current': vix_level,
+                'vix_previous': self.previous_vix,
+                'regime_current': regime,
+                'regime_previous': self.previous_vix_regime,
+                'portfolio_snapshot': portfolio,
+                'status': 'pending'
+            }
+
+            # Write alert to file
+            alert_file = 'strategy_review_needed.json'
+            with open(alert_file, 'w') as f:
+                json.dump(alert, f, indent=2)
+
+            logger.info(f"VIX: {self.previous_vix:.2f} ({self.previous_vix_regime}) → {vix_level:.2f} ({regime})")
+            logger.info(f"Alert written to: {alert_file}")
+            logger.info("[ACTION] Strategy Agent will review during next check-in")
+            logger.info("=" * 70)
+            logger.info("")
+
+        except Exception as e:
+            logger.error(f"Error triggering strategic review: {e}", exc_info=True)
+
     def monitoring_loop(self):
         """Main monitoring loop - runs continuously during market hours"""
 
@@ -253,6 +449,19 @@ class ExecutionMonitor:
 
                 # Update portfolio prices
                 self.executor.portfolio.update_prices(current_prices)
+
+                # Check VIX regime
+                vix_result = self.check_vix_regime()
+                if vix_result:
+                    vix_level, vix_regime, threshold_crossed = vix_result
+
+                    # Trigger strategic review if regime crossed threshold
+                    if threshold_crossed:
+                        self.trigger_strategic_review_for_vix(vix_level, vix_regime)
+
+                    # Update previous VIX for next check
+                    self.previous_vix = vix_level
+                    self.previous_vix_regime = vix_regime
 
                 # Display current status
                 logger.info("\nCurrent Positions:")
