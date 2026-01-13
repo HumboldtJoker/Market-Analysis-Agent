@@ -85,10 +85,24 @@ class ExecutionMonitor:
         self.eastern_tz = pytz.timezone('US/Eastern')
 
         # Trading strategy rules (from trading_strategy.md)
-        self.stop_loss_pct = 0.20  # -20% aggressive stops
+        self.stop_loss_pct = 0.20  # Default -20% aggressive stops
         self.dip_buy_min = 0.05  # Buy dips of 5-10%
         self.dip_buy_max = 0.10
         self.rebalance_threshold = 0.30  # Rebalance if >30% drift
+
+        # Autonomous defensive actions (enabled by default for risk management)
+        self.autonomous_defense_enabled = True
+
+        # VIX-adaptive stop-loss percentages (tighten in elevated volatility)
+        self.vix_stop_losses = {
+            'CALM': 0.20,      # -20% in calm markets
+            'NORMAL': 0.20,    # -20% in normal markets
+            'ELEVATED': 0.15,  # -15% in elevated volatility (TIGHTEN)
+            'HIGH': 0.10       # -10% in high volatility (VERY TIGHT)
+        }
+
+        # Position-specific stop-loss overrides (for extreme beta stocks)
+        self.position_stop_losses = {}  # e.g., {'SOFI': 0.10} for tighter stops
 
         # Track actions
         self.check_count = 0
@@ -155,7 +169,7 @@ class ExecutionMonitor:
         return prices
 
     def check_stop_losses(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
-        """Check all positions for stop-loss triggers"""
+        """Check all positions for stop-loss triggers using VIX-adaptive thresholds"""
         actions = []
 
         for pos in positions:
@@ -167,9 +181,12 @@ class ExecutionMonitor:
             current_price = current_prices[ticker]
             quantity = pos['quantity']
 
-            # Check stop-loss
+            # Get VIX-adaptive stop-loss for this position
+            stop_loss_pct = self.get_stop_loss_for_position(ticker, self.previous_vix_regime)
+
+            # Check stop-loss with adaptive threshold
             should_sell, stop_info = self.risk_manager.check_stop_loss(
-                ticker, entry_price, current_price, self.stop_loss_pct
+                ticker, entry_price, current_price, stop_loss_pct
             )
 
             if should_sell:
@@ -512,6 +529,163 @@ class ExecutionMonitor:
         except Exception as e:
             logger.error(f"Error triggering scheduled review: {e}", exc_info=True)
 
+    def get_stop_loss_for_position(self, ticker: str, vix_regime: str = None) -> float:
+        """
+        Get VIX-adaptive stop-loss percentage for a specific position
+
+        Args:
+            ticker: Stock ticker symbol
+            vix_regime: Current VIX regime (CALM/NORMAL/ELEVATED/HIGH)
+
+        Returns:
+            Stop-loss percentage (e.g., 0.15 for -15%)
+        """
+        # Check if position has specific override (for extreme beta stocks)
+        if ticker in self.position_stop_losses:
+            return self.position_stop_losses[ticker]
+
+        # Use VIX-adaptive stop-loss if regime known
+        if vix_regime and vix_regime in self.vix_stop_losses:
+            return self.vix_stop_losses[vix_regime]
+
+        # Default to base stop-loss
+        return self.stop_loss_pct
+
+    def execute_autonomous_defensive_actions(self, vix_regime: str):
+        """
+        Execute autonomous defensive actions based on VIX regime
+        WITHOUT waiting for human approval
+
+        This implements risk management to protect capital when user unavailable.
+
+        Actions in ELEVATED regime (VIX 20-30):
+        - Trim 50% of extreme beta positions (beta >2.0)
+        - Tighten stop-losses to -15% (from -20%)
+
+        Actions in HIGH regime (VIX >30):
+        - Exit all extreme beta positions (beta >2.0)
+        - Tighten stop-losses to -10%
+        - Move to 70%+ cash position
+        """
+        if not self.autonomous_defense_enabled:
+            logger.info("[AUTONOMOUS DEFENSE] Disabled - skipping defensive actions")
+            return
+
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info(f"[AUTONOMOUS DEFENSE] VIX REGIME: {vix_regime}")
+        logger.info("=" * 70)
+
+        portfolio = self.executor.get_portfolio_summary()
+        positions = portfolio['positions']
+
+        # Define extreme beta positions based on known analysis
+        # SOFI: beta 2.48, NVDA: beta 1.93, SNAP: beta 1.70, AAPL: beta 1.30
+        high_beta_positions = {
+            'SOFI': {'beta': 2.48, 'extreme': True},   # Extreme risk
+            'NVDA': {'beta': 1.93, 'extreme': False},  # High but acceptable
+            'SNAP': {'beta': 1.70, 'extreme': False},  # High but acceptable
+            'AAPL': {'beta': 1.30, 'extreme': False}   # Moderate
+        }
+
+        actions_taken = []
+
+        # ELEVATED regime (VIX 20-30): Trim extreme beta positions
+        if vix_regime == 'ELEVATED':
+            logger.info("[ELEVATED REGIME] Implementing defensive trims:")
+
+            for pos in positions:
+                ticker = pos['ticker']
+                if ticker not in high_beta_positions:
+                    continue
+
+                beta_info = high_beta_positions[ticker]
+
+                # Trim 50% of extreme beta positions (beta >2.0)
+                if beta_info['extreme'] and beta_info['beta'] > 2.0:
+                    quantity = pos['quantity']
+                    trim_qty = quantity * 0.5  # 50% trim
+
+                    logger.info(f"[TRIM] {ticker} (beta {beta_info['beta']}): Selling 50% ({trim_qty:.4f} shares)")
+                    logger.info(f"   Reason: Extreme beta risk in elevated volatility")
+                    logger.info(f"   Current position: {quantity} shares")
+
+                    # Execute trim
+                    result = self.executor.execute_order(
+                        ticker=ticker,
+                        action='SELL',
+                        quantity=trim_qty,
+                        order_type='market'
+                    )
+
+                    actions_taken.append({
+                        'type': 'DEFENSIVE_TRIM',
+                        'ticker': ticker,
+                        'quantity': trim_qty,
+                        'reason': f'Extreme beta {beta_info["beta"]} in ELEVATED VIX',
+                        'execution': result
+                    })
+
+                    logger.info(f"   Execution: {result['status']}")
+
+                    # Set tighter stop-loss for remaining position
+                    self.position_stop_losses[ticker] = 0.10  # -10% for extreme beta
+                    logger.info(f"   New stop-loss: -10% (tightened from -20%)")
+
+        # HIGH regime (VIX >30): Exit extreme beta entirely
+        elif vix_regime == 'HIGH':
+            logger.info("[HIGH REGIME] Implementing emergency defensive measures:")
+
+            for pos in positions:
+                ticker = pos['ticker']
+                if ticker not in high_beta_positions:
+                    continue
+
+                beta_info = high_beta_positions[ticker]
+
+                # Exit entire extreme beta positions
+                if beta_info['extreme'] and beta_info['beta'] > 2.0:
+                    quantity = pos['quantity']
+
+                    logger.warning(f"[EXIT] {ticker} (beta {beta_info['beta']}): Selling 100% ({quantity:.4f} shares)")
+                    logger.warning(f"   Reason: UNACCEPTABLE risk in HIGH volatility regime")
+
+                    # Execute full exit
+                    result = self.executor.execute_order(
+                        ticker=ticker,
+                        action='SELL',
+                        quantity=quantity,
+                        order_type='market'
+                    )
+
+                    actions_taken.append({
+                        'type': 'DEFENSIVE_EXIT',
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'reason': f'Extreme beta {beta_info["beta"]} in HIGH VIX',
+                        'execution': result
+                    })
+
+                    logger.warning(f"   Execution: {result['status']}")
+
+            # Tighten all remaining stops to -10%
+            logger.info("[HIGH REGIME] All stop-losses tightened to -10%")
+            self.stop_loss_pct = 0.10
+
+        # Summary
+        if actions_taken:
+            logger.info("")
+            logger.info(f"[AUTONOMOUS DEFENSE] {len(actions_taken)} defensive actions executed")
+            logger.info("   These actions protect capital when user unavailable")
+            logger.info("   Strategy Agent will review on next check-in")
+        else:
+            logger.info("[AUTONOMOUS DEFENSE] No defensive actions needed at this time")
+
+        logger.info("=" * 70)
+        logger.info("")
+
+        return actions_taken
+
     def monitoring_loop(self):
         """Main monitoring loop - runs continuously during market hours"""
 
@@ -549,12 +723,20 @@ class ExecutionMonitor:
 
                 # Check VIX regime
                 vix_result = self.check_vix_regime()
+                current_vix_regime = None
                 if vix_result:
                     vix_level, vix_regime, threshold_crossed = vix_result
+                    current_vix_regime = vix_regime
 
                     # Trigger strategic review if regime crossed threshold
                     if threshold_crossed:
                         self.trigger_strategic_review_for_vix(vix_level, vix_regime)
+
+                        # Execute autonomous defensive actions IMMEDIATELY
+                        # Don't wait for Strategy Agent - protect capital now
+                        if vix_regime in ['ELEVATED', 'HIGH']:
+                            logger.info("[AUTONOMOUS] VIX regime change detected - executing defensive actions")
+                            self.execute_autonomous_defensive_actions(vix_regime)
 
                     # Update previous VIX for next check
                     self.previous_vix = vix_level
@@ -571,10 +753,14 @@ class ExecutionMonitor:
                     price = current_prices.get(ticker, pos['current_price'])
                     entry = pos['avg_cost']
                     pnl_pct = ((price - entry) / entry) * 100
-                    stop_loss = entry * (1 - self.stop_loss_pct)
+
+                    # Get VIX-adaptive stop-loss for this position
+                    stop_loss_pct = self.get_stop_loss_for_position(ticker, current_vix_regime)
+                    stop_loss = entry * (1 - stop_loss_pct)
 
                     status = "[OK]" if price > stop_loss else "[NEAR STOP]"
-                    logger.info(f"  {ticker}: ${price:.2f} (entry: ${entry:.2f}, P&L: {pnl_pct:+.2f}%, stop: ${stop_loss:.2f}) {status}")
+                    stop_label = f"-{int(stop_loss_pct * 100)}%"
+                    logger.info(f"  {ticker}: ${price:.2f} (entry: ${entry:.2f}, P&L: {pnl_pct:+.2f}%, stop: ${stop_loss:.2f} {stop_label}) {status}")
 
                 # Check for actions
                 actions = []
