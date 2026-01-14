@@ -382,6 +382,286 @@ class OrderExecutor:
 
         return self.portfolio.cash
 
+    def validate_deployment(self, planned_trades: Dict[str, float],
+                          use_margin: bool = False) -> Dict:
+        """
+        Validate if a set of planned trades can be executed within account limits
+
+        SAFETY CHECK: Prevents over-deployment and margin violations
+        Call this BEFORE executing any bulk strategy deployment
+
+        Args:
+            planned_trades: Dict of {ticker: dollar_amount} for planned positions
+            use_margin: If True, allows using margin (2x buying power)
+                       If False, limits to cash only
+
+        Returns:
+            Dict with validation results:
+            {
+                "valid": bool,
+                "account_cash": float,
+                "account_equity": float,
+                "buying_power": float,
+                "total_deployment": float,
+                "available_after": float,
+                "margin_used": float,
+                "warnings": list,
+                "errors": list
+            }
+        """
+        # Get current account state
+        if self.mode == "live" and self.alpaca_client:
+            account = self.alpaca_client.get_account()
+            cash = float(account.cash)
+            equity = float(account.equity)
+            buying_power = float(account.buying_power)
+        else:
+            # Paper mode
+            cash = self.portfolio.cash
+            equity = self.portfolio.get_portfolio_value()
+            buying_power = cash  # No margin in paper mode by default
+
+        # Calculate total deployment
+        total_deployment = sum(planned_trades.values())
+
+        # Determine available capital
+        if use_margin:
+            available_capital = buying_power
+        else:
+            available_capital = cash
+
+        # Calculate what will remain
+        available_after = available_capital - total_deployment
+        margin_used = max(0, total_deployment - cash)
+
+        # Validation checks
+        errors = []
+        warnings = []
+        valid = True
+
+        # ERROR: Exceeds available capital
+        if total_deployment > available_capital:
+            errors.append(
+                f"Deployment ${total_deployment:,.0f} exceeds "
+                f"{'buying power' if use_margin else 'cash'} ${available_capital:,.0f}"
+            )
+            valid = False
+
+        # ERROR: Would result in negative cash without margin approval
+        if not use_margin and total_deployment > cash:
+            errors.append(
+                f"Deployment ${total_deployment:,.0f} exceeds cash ${cash:,.0f}. "
+                "Set use_margin=True to allow margin usage"
+            )
+            valid = False
+
+        # WARNING: Using significant margin
+        if margin_used > 0:
+            margin_pct = (margin_used / equity) * 100
+            if margin_pct > 50:
+                warnings.append(
+                    f"High margin usage: ${margin_used:,.0f} ({margin_pct:.0f}% of equity)"
+                )
+            else:
+                warnings.append(
+                    f"Using margin: ${margin_used:,.0f} ({margin_pct:.0f}% of equity)"
+                )
+
+        # WARNING: Low cash buffer remaining
+        cash_buffer_pct = (available_after / equity) * 100 if equity > 0 else 0
+        if valid and cash_buffer_pct < 10:
+            warnings.append(
+                f"Low cash buffer: ${available_after:,.0f} ({cash_buffer_pct:.0f}% of equity)"
+            )
+
+        return {
+            "valid": valid,
+            "account_cash": cash,
+            "account_equity": equity,
+            "buying_power": buying_power,
+            "total_deployment": total_deployment,
+            "available_after": available_after,
+            "margin_used": margin_used,
+            "margin_pct": (margin_used / equity * 100) if equity > 0 else 0,
+            "warnings": warnings,
+            "errors": errors
+        }
+
+    def execute_instructions(self, instructions_file: str = "trading_instructions.json",
+                            auto_archive: bool = True) -> Dict:
+        """
+        Execute a set of trading instructions from file
+
+        SAFETY: Validates entire instruction set before executing any trades
+        LOGGING: Archives instructions and logs all results
+
+        Args:
+            instructions_file: Path to trading instructions JSON file
+            auto_archive: Automatically archive instructions after execution
+
+        Returns:
+            Dict with execution results:
+            {
+                "success": bool,
+                "validation": dict,
+                "execution_results": list,
+                "final_portfolio": dict,
+                "errors": list
+            }
+        """
+        from trading_instructions import TradingInstructionSet
+        from strategy_logger import StrategyReviewLogger
+
+        logger = StrategyReviewLogger()
+
+        # Load instructions
+        try:
+            instruction_set = TradingInstructionSet.load(instructions_file)
+            if instruction_set is None:
+                return {
+                    "success": False,
+                    "error": f"Instructions file not found: {instructions_file}",
+                    "validation": None,
+                    "execution_results": [],
+                    "final_portfolio": None,
+                    "errors": [f"File not found: {instructions_file}"]
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to load instructions: {e}",
+                "validation": None,
+                "execution_results": [],
+                "final_portfolio": None,
+                "errors": [str(e)]
+            }
+
+        # Check if already executed
+        if instruction_set.status == "completed":
+            return {
+                "success": False,
+                "error": "Instructions already executed",
+                "validation": None,
+                "execution_results": instruction_set.execution_results,
+                "final_portfolio": None,
+                "errors": ["Instructions already executed"]
+            }
+
+        # Build validation dict from BUY instructions
+        planned_trades = {}
+        for instr in instruction_set.get_buy_instructions():
+            if instr.target_allocation:
+                planned_trades[instr.ticker] = instr.target_allocation
+
+        # VALIDATE before executing
+        validation = self.validate_deployment(planned_trades, use_margin=instruction_set.use_margin)
+        instruction_set.validation_result = validation
+
+        if not validation["valid"]:
+            instruction_set.status = "validation_failed"
+            instruction_set.save(instructions_file)
+
+            return {
+                "success": False,
+                "error": "Validation failed",
+                "validation": validation,
+                "execution_results": [],
+                "final_portfolio": None,
+                "errors": validation["errors"]
+            }
+
+        # EXECUTE all instructions
+        execution_results = []
+        errors = []
+
+        # Execute SELL orders first (free up cash)
+        for instr in instruction_set.get_sell_instructions():
+            try:
+                result = self.execute_order(
+                    ticker=instr.ticker,
+                    action=instr.action,
+                    quantity=instr.quantity,
+                    order_type=instr.order_type,
+                    limit_price=instr.limit_price
+                )
+                execution_results.append({
+                    "ticker": instr.ticker,
+                    "action": instr.action,
+                    "quantity": instr.quantity,
+                    "status": result.get("status", "unknown"),
+                    "reason": instr.reason
+                })
+            except Exception as e:
+                errors.append(f"SELL {instr.ticker}: {e}")
+                execution_results.append({
+                    "ticker": instr.ticker,
+                    "action": instr.action,
+                    "quantity": instr.quantity,
+                    "status": "error",
+                    "error": str(e),
+                    "reason": instr.reason
+                })
+
+        # Execute BUY orders
+        for instr in instruction_set.get_buy_instructions():
+            try:
+                result = self.execute_order(
+                    ticker=instr.ticker,
+                    action=instr.action,
+                    quantity=instr.quantity,
+                    order_type=instr.order_type,
+                    limit_price=instr.limit_price
+                )
+                execution_results.append({
+                    "ticker": instr.ticker,
+                    "action": instr.action,
+                    "quantity": instr.quantity,
+                    "status": result.get("status", "unknown"),
+                    "reason": instr.reason
+                })
+            except Exception as e:
+                errors.append(f"BUY {instr.ticker}: {e}")
+                execution_results.append({
+                    "ticker": instr.ticker,
+                    "action": instr.action,
+                    "quantity": instr.quantity,
+                    "status": "error",
+                    "error": str(e),
+                    "reason": instr.reason
+                })
+
+        # Update instruction set
+        instruction_set.execution_results = execution_results
+        instruction_set.status = "completed" if not errors else "completed_with_errors"
+        instruction_set.save(instructions_file)
+
+        # Get final portfolio state
+        final_portfolio = self.get_portfolio_summary()
+
+        # Log execution results
+        logger.log_execution_result(
+            instructions_file=instructions_file,
+            execution_summary={
+                "total_instructions": len(instruction_set.instructions),
+                "successful": len([r for r in execution_results if r["status"] in ["filled", "partially_filled"]]),
+                "failed": len([r for r in execution_results if r["status"] == "error"])
+            },
+            final_portfolio=final_portfolio,
+            errors=errors
+        )
+
+        # Archive instructions
+        if auto_archive:
+            instruction_set.archive()
+
+        return {
+            "success": len(errors) == 0,
+            "validation": validation,
+            "execution_results": execution_results,
+            "final_portfolio": final_portfolio,
+            "errors": errors
+        }
+
 
 if __name__ == "__main__":
     # Quick test (paper mode)
