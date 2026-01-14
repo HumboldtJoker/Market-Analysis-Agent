@@ -49,3 +49,35 @@ Thumbs.db
 test_output/
 *.test
 desktop/settings.json
+
+# AutoInvestor - Local configuration
+claude_code_config.json
+claude_desktop_config.json
+.mcp.json
+.claude/settings.local.json
+
+# AutoInvestor - Node modules
+node_modules/
+
+# AutoInvestor - Runtime logs (update constantly)
+execution_log.md
+vix_log.json
+
+# AutoInvestor - Local status files
+SETUP_COMPLETE.md
+FINAL_STATUS.md
+HOOK_SETUP_COMPLETE.md
+MCP_DEBUG_STATUS.md
+CLAUDE_CODE_SETUP.md
+CLAUDE_CODE_INFO.md
+STARTUP_HOOK_SETUP.md
+MCP_SERVER_SETUP.md
+
+# AutoInvestor - Runtime state files
+portfolio_state.json
+last_review.json
+strategy_review_needed.json
+scheduled_review_needed.json
+
+# AutoInvestor - Temporary files
+nul
