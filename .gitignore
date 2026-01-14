@@ -79,5 +79,13 @@ last_review.json
 strategy_review_needed.json
 scheduled_review_needed.json
 
+# AutoInvestor - Active trading instructions (pending execution)
+trading_instructions.json
+
+# AutoInvestor - Historical logs (KEEP in git for audit trail)
+# trading_instructions_history/
+# strategy_reviews/
+# execution_results/
+
 # AutoInvestor - Temporary files
 nul
