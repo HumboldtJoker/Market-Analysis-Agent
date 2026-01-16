@@ -333,6 +333,15 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": []
             }
+        ),
+        Tool(
+            name="market_status",
+            description="Get current market status including date, day of week, whether market is open, and upcoming trading days. Use this before making any date or calendar-related statements.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
         )
     ]
 
@@ -442,6 +451,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             mode = arguments.get("mode", "paper")
             executor = OrderExecutor(mode=mode)
             result = executor.get_portfolio_summary()
+            return [TextContent(type="text", text=format_result(result))]
+
+        elif name == "market_status":
+            from market_status import get_market_status
+            result = get_market_status()
             return [TextContent(type="text", text=format_result(result))]
 
         else:
