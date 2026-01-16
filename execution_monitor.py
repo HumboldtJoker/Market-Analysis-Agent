@@ -17,13 +17,15 @@ Pure Python implementation with ZERO LLM costs:
 import time
 import json
 import os
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, date
 from pathlib import Path
 import pytz
 import logging
 from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 import yfinance as yf
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetCalendarRequest
 
 # Load environment variables from .env file
 load_dotenv()
@@ -102,7 +104,9 @@ class ExecutionMonitor:
         }
 
         # Position-specific stop-loss overrides (for extreme beta stocks)
-        self.position_stop_losses = {}  # e.g., {'SOFI': 0.10} for tighter stops
+        self.position_stop_losses = {
+            'COIN': 0.05  # -5% cut threshold (hit threshold 2026-01-15, auto-cut on next check)
+        }
 
         # Track actions
         self.check_count = 0
@@ -195,13 +199,12 @@ class ExecutionMonitor:
                 logger.info(f"   Current: ${current_price:.2f}")
                 logger.info(f"   Loss: {stop_info['loss_pct']:.2f}%")
 
-                # Execute sell
+                # Execute sell (market order for immediate execution on defensive exits)
                 result = self.executor.execute_order(
                     ticker=ticker,
                     action='SELL',
                     quantity=quantity,
-                    order_type='limit',
-                    limit_price=stop_info['stop_loss_price']
+                    order_type='market'
                 )
 
                 actions.append({
