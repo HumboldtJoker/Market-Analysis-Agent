@@ -478,9 +478,23 @@ class ExecutionMonitor:
             # No previous review - trigger first one
             return True
 
-        hours_since_review = (datetime.now() - self.last_scheduled_review).total_seconds() / 3600
+        now = datetime.now(self.eastern_tz)
+        hours_since_review = (now.replace(tzinfo=None) - self.last_scheduled_review).total_seconds() / 3600
 
-        return hours_since_review >= self.review_interval_hours
+        # Standard check: has interval elapsed?
+        if hours_since_review >= self.review_interval_hours:
+            return True
+
+        # End-of-day check: trigger early if next review would fall after close
+        # If within 30 mins of close AND next review would be after close, trigger now
+        mins_to_close = (datetime.combine(now.date(), self.market_close) - now.replace(tzinfo=None)).total_seconds() / 60
+        hours_until_next_review = self.review_interval_hours - hours_since_review
+
+        if 0 < mins_to_close <= 30 and hours_until_next_review * 60 > mins_to_close:
+            logger.info(f"[END-OF-DAY REVIEW] Triggering early - next review would be after close")
+            return True
+
+        return False
 
     def trigger_scheduled_review(self):
         """
