@@ -183,7 +183,7 @@ def get_macro_regime() -> Dict:
         return {'error': str(e)}
 
 
-def get_portfolio(mode: str = 'paper') -> Dict:
+def get_portfolio(mode: str = 'live') -> Dict:
     """
     Get current portfolio summary.
 
@@ -237,7 +237,7 @@ def get_market_status() -> Dict:
 
 
 def execute_order(ticker: str, action: str, quantity: float,
-                  order_type: str = 'market', mode: str = 'paper') -> Dict:
+                  order_type: str = 'market', mode: str = 'live') -> Dict:
     """
     Execute a trade order.
 
