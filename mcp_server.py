@@ -25,6 +25,10 @@ from mcp.types import Tool, TextContent
 
 # AutoInvestor imports
 try:
+    # Unified API (preferred interface)
+    import autoinvestor_api as api
+
+    # Legacy imports (for backward compatibility)
     from autoinvestor_react import (
         get_stock_price,
         get_company_financials,

@@ -1,0 +1,328 @@
+"""
+AutoInvestor Unified API
+========================
+
+A clean, consistent interface to all AutoInvestor analysis tools.
+This module wraps the underlying implementations with intuitive names
+and consistent return structures.
+
+Usage:
+    from autoinvestor_api import (
+        get_stock_price,
+        get_technicals,
+        get_sentiment,
+        get_macro_regime,
+        get_portfolio,
+        get_market_status,
+        execute_order
+    )
+
+All functions automatically load environment variables from .env
+"""
+
+import os
+from typing import Dict, Optional
+from dotenv import load_dotenv
+
+# Load environment variables on import
+load_dotenv()
+
+# Import underlying modules
+import yfinance as yf
+from technical_indicators import analyze_technicals
+from news_sentiment import get_news_sentiment, analyze_news_sentiment
+from macro_agent import MacroAgent
+from order_executor import OrderExecutor
+from market_status import get_market_status as _get_market_status
+
+
+def get_stock_price(ticker: str) -> Dict:
+    """
+    Get current stock price and key metrics.
+
+    Args:
+        ticker: Stock symbol (e.g., 'AAPL')
+
+    Returns:
+        Dict with keys: ticker, price, volume, change_pct,
+                       high_52w, low_52w, market_cap
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+
+        price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
+        prev_close = info.get('previousClose', price)
+        change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0
+
+        return {
+            'ticker': ticker,
+            'price': price,
+            'volume': info.get('volume', 0),
+            'change_pct': round(change_pct, 2),
+            'high_52w': info.get('fiftyTwoWeekHigh', 0),
+            'low_52w': info.get('fiftyTwoWeekLow', 0),
+            'market_cap': info.get('marketCap', 0),
+            'pe_ratio': info.get('trailingPE'),
+            'dividend_yield': info.get('dividendYield'),
+        }
+    except Exception as e:
+        return {'error': str(e), 'ticker': ticker}
+
+
+def get_technicals(ticker: str) -> Dict:
+    """
+    Get technical analysis for a stock.
+
+    Args:
+        ticker: Stock symbol
+
+    Returns:
+        Dict with keys: ticker, signal, confidence, rsi, macd_signal,
+                       sma50, sma50_distance, bullish_pct, details
+    """
+    try:
+        result = analyze_technicals(ticker)
+        raw = result.get('raw_data', {})
+        overall = raw.get('overall_signal', {})
+        rsi_data = raw.get('rsi', {})
+        macd_data = raw.get('macd', {})
+        sma_data = raw.get('sma', {})
+        bb_data = raw.get('bollinger_bands', {})
+
+        return {
+            'ticker': ticker,
+            'price': raw.get('current_price', 0),
+            'signal': overall.get('recommendation', 'N/A'),
+            'confidence': overall.get('confidence', 'N/A'),
+            'bullish_pct': overall.get('bullish_pct', 0),
+            'rsi': rsi_data.get('rsi_14', 0),
+            'rsi_signal': rsi_data.get('signal', ''),
+            'macd': macd_data.get('macd', 0),
+            'macd_histogram': macd_data.get('histogram', 0),
+            'macd_signal': 'bullish' if macd_data.get('histogram', 0) > 0 else 'bearish',
+            'sma50': sma_data.get('sma_50', 0),
+            'sma50_distance': sma_data.get('sma_50_distance', 0),
+            'sma200': sma_data.get('sma_200', 0),
+            'bb_upper': bb_data.get('upper_band', 0),
+            'bb_lower': bb_data.get('lower_band', 0),
+            'bb_signal': bb_data.get('sentiment', 'neutral'),
+            'details': result.get('summary', '')
+        }
+    except Exception as e:
+        return {'error': str(e), 'ticker': ticker}
+
+
+def get_sentiment(ticker: str, days: int = 7) -> Dict:
+    """
+    Get news sentiment analysis for a stock.
+
+    Args:
+        ticker: Stock symbol
+        days: Number of days of news to analyze (default: 7)
+
+    Returns:
+        Dict with keys: ticker, overall, positive, neutral, negative,
+                       articles_count, headlines
+    """
+    try:
+        result = get_news_sentiment(ticker, days=days)
+
+        if 'error' in result:
+            return result
+
+        bd = result.get('sentiment_breakdown', {})
+        articles = result.get('articles', [])
+
+        return {
+            'ticker': ticker,
+            'overall': result.get('overall_sentiment', 'N/A'),
+            'positive': bd.get('positive', 0),
+            'neutral': bd.get('neutral', 0),
+            'negative': bd.get('negative', 0),
+            'positive_pct': bd.get('positive_pct', 0),
+            'negative_pct': bd.get('negative_pct', 0),
+            'articles_count': result.get('articles_analyzed', 0),
+            'headlines': [
+                {'title': a['title'], 'sentiment': a['sentiment'], 'source': a['publisher']}
+                for a in articles[:5]
+            ]
+        }
+    except Exception as e:
+        return {'error': str(e), 'ticker': ticker}
+
+
+def get_macro_regime() -> Dict:
+    """
+    Get current macro economic regime and risk assessment.
+
+    Returns:
+        Dict with keys: regime, risk_modifier, vix, vix_status,
+                       yield_curve, credit_spreads, recommendation
+    """
+    try:
+        api_key = os.getenv('FRED_API_KEY')
+        ma = MacroAgent(api_key=api_key)
+        result = ma.get_market_regime()
+
+        indicators = result.get('indicators', {})
+
+        return {
+            'regime': result.get('regime', 'UNKNOWN'),
+            'risk_modifier': result.get('risk_modifier', 1.0),
+            'recommendation': result.get('recommendation', ''),
+            'vix': indicators.get('vix', {}).get('value'),
+            'vix_status': indicators.get('vix', {}).get('interpretation', ''),
+            'yield_curve': indicators.get('yield_curve', {}).get('value'),
+            'yield_curve_status': indicators.get('yield_curve', {}).get('interpretation', ''),
+            'credit_spreads': indicators.get('credit_spread', {}).get('value'),
+            'fed_funds': indicators.get('fed_funds_rate', {}).get('value'),
+            'unemployment': indicators.get('unemployment', {}).get('value'),
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def get_portfolio(mode: str = 'paper') -> Dict:
+    """
+    Get current portfolio summary.
+
+    Args:
+        mode: 'paper' or 'live'
+
+    Returns:
+        Dict with keys: total_value, cash, equity, positions, pnl, pnl_pct
+    """
+    try:
+        executor = OrderExecutor(mode=mode)
+        result = executor.get_portfolio_summary()
+
+        equity = result['total_value'] - result['cash']
+
+        return {
+            'total_value': result['total_value'],
+            'cash': result['cash'],
+            'equity': equity,
+            'pnl': result.get('total_unrealized_pl', 0),
+            'pnl_pct': (result.get('total_unrealized_pl', 0) / 100000) * 100,
+            'num_positions': result.get('num_positions', 0),
+            'positions': [
+                {
+                    'ticker': p['ticker'],
+                    'shares': p['quantity'],
+                    'price': p['current_price'],
+                    'entry': p['avg_cost'],
+                    'pnl': p['unrealized_pl'],
+                    'pnl_pct': p['unrealized_pl_percent']
+                }
+                for p in result.get('positions', [])
+            ]
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def get_market_status() -> Dict:
+    """
+    Get current market status (date, open/closed, next trading day).
+
+    Returns:
+        Dict with keys: now, today, day_of_week, is_trading_day,
+                       market_open, next_trading_day
+    """
+    try:
+        return _get_market_status()
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def execute_order(ticker: str, action: str, quantity: float,
+                  order_type: str = 'market', mode: str = 'paper') -> Dict:
+    """
+    Execute a trade order.
+
+    Args:
+        ticker: Stock symbol
+        action: 'BUY' or 'SELL'
+        quantity: Number of shares
+        order_type: 'market' or 'limit'
+        mode: 'paper' or 'live'
+
+    Returns:
+        Dict with order status and details
+    """
+    try:
+        executor = OrderExecutor(mode=mode)
+        result = executor.execute_order(
+            ticker=ticker,
+            action=action,
+            quantity=quantity,
+            order_type=order_type
+        )
+        return result
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def scan_technicals(tickers: list) -> list:
+    """
+    Scan multiple tickers for technical signals.
+
+    Args:
+        tickers: List of stock symbols
+
+    Returns:
+        List of dicts sorted by bullish_pct descending
+    """
+    results = []
+    for ticker in tickers:
+        result = get_technicals(ticker)
+        if 'error' not in result:
+            results.append(result)
+
+    return sorted(results, key=lambda x: x.get('bullish_pct', 0), reverse=True)
+
+
+# Convenience aliases for common operations
+analyze_stock = get_technicals
+check_sentiment = get_sentiment
+market_regime = get_macro_regime
+portfolio_status = get_portfolio
+
+
+if __name__ == '__main__':
+    # Quick test of all functions
+    print("Testing AutoInvestor API...")
+    print()
+
+    print("1. get_stock_price('AMD'):")
+    result = get_stock_price('AMD')
+    print(f"   Price: ${result.get('price', 0):.2f}")
+    print()
+
+    print("2. get_technicals('AMD'):")
+    result = get_technicals('AMD')
+    print(f"   Signal: {result.get('signal')} (RSI {result.get('rsi', 0):.0f})")
+    print()
+
+    print("3. get_sentiment('AMD'):")
+    result = get_sentiment('AMD')
+    print(f"   Overall: {result.get('overall')}")
+    print()
+
+    print("4. get_macro_regime():")
+    result = get_macro_regime()
+    print(f"   Regime: {result.get('regime')} (Risk: {result.get('risk_modifier')})")
+    print()
+
+    print("5. get_portfolio():")
+    result = get_portfolio()
+    print(f"   Value: ${result.get('total_value', 0):,.2f}")
+    print()
+
+    print("6. get_market_status():")
+    result = get_market_status()
+    print(f"   {result.get('today')} - Market {'OPEN' if result.get('market_open') else 'CLOSED'}")
+    print()
+
+    print("All tests passed!")
