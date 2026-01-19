@@ -103,9 +103,9 @@ class ExecutionMonitor:
             'HIGH': 0.10       # -10% in high volatility (VERY TIGHT)
         }
 
-        # Position-specific stop-loss overrides (for extreme beta stocks)
+        # Position-specific stop-loss overrides (tighter thresholds for weak positions)
         self.position_stop_losses = {
-            'COIN': 0.05  # -5% cut threshold (hit threshold 2026-01-15, auto-cut on next check)
+            'MSFT': 0.03  # -3% cut threshold - STRONG SELL signal, watch closely (2026-01-19)
         }
 
         # Track actions
