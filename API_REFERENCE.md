@@ -151,12 +151,12 @@ Get macro economic regime and risk assessment.
 
 ---
 
-### `get_portfolio(mode: str = 'paper') -> Dict`
+### `get_portfolio(mode: str = 'live') -> Dict`
 
 Get current portfolio summary.
 
 **Arguments:**
-- `mode`: 'paper' or 'live' (default: 'paper')
+- `mode`: 'paper' or 'live' (default: 'live')
 
 **Returns:**
 ```python
