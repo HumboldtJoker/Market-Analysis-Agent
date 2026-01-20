@@ -1,0 +1,17 @@
+{
+  "position_stop_losses": {
+    "MSFT": {
+      "threshold": 0.03,
+      "reason": "STRONG SELL signal, below SMA50, bearish MACD",
+      "added": "2026-01-19"
+    }
+  },
+  "default_stop_loss": 0.20,
+  "vix_stop_losses": {
+    "CALM": 0.25,
+    "NORMAL": 0.20,
+    "ELEVATED": 0.15,
+    "HIGH": 0.10
+  },
+  "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle (5 min)"
+}
