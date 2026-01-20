@@ -139,6 +139,45 @@ class OrderExecutor:
         if quantity <= 0:
             raise ValueError(f"Invalid quantity: {quantity}")
 
+        # Security validation: prevent dangerous orders
+        current_price = self.get_current_price(ticker)
+        order_value = quantity * current_price
+
+        # 1. Sanity check: reject absurdly large quantities (> 100,000 shares)
+        if quantity > 100000:
+            raise ValueError(f"Order quantity {quantity} exceeds maximum allowed (100,000 shares)")
+
+        # 2. For SELL: verify we own enough shares
+        if action == "SELL":
+            position = self.portfolio.get_position(ticker)
+            if position is None:
+                raise ValueError(f"Cannot sell {ticker}: no position held")
+            if quantity > position.quantity:
+                raise ValueError(
+                    f"Cannot sell {quantity} shares of {ticker}: only own {position.quantity:.4f} shares"
+                )
+
+        # 3. For BUY: verify we have enough cash (with 5% buffer for slippage)
+        if action == "BUY":
+            required_cash = order_value * 1.05  # 5% buffer
+            available_cash = self.portfolio.cash
+            if required_cash > available_cash and available_cash > 0:
+                max_shares = (available_cash * 0.95) / current_price
+                raise ValueError(
+                    f"Insufficient cash for {quantity} shares of {ticker} "
+                    f"(~${order_value:,.0f}): only ${available_cash:,.0f} available. "
+                    f"Max buy: {max_shares:.2f} shares"
+                )
+
+        # 4. Single order size limit: warn if > 25% of portfolio (but allow it)
+        portfolio_value = self.portfolio.get_portfolio_value() + self.portfolio.cash
+        if portfolio_value > 0 and order_value > portfolio_value * 0.25:
+            import logging
+            logging.warning(
+                f"Large order: {ticker} {action} ${order_value:,.0f} is "
+                f"{(order_value/portfolio_value)*100:.1f}% of portfolio"
+            )
+
         if self.mode == "paper":
             return self._execute_paper_order(ticker, action, quantity, order_type, limit_price)
         else:

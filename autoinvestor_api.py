@@ -237,7 +237,7 @@ def get_market_status() -> Dict:
 
 
 def execute_order(ticker: str, action: str, quantity: float,
-                  order_type: str = 'market', mode: str = 'live') -> Dict:
+                  order_type: str = 'market', mode: str = 'paper') -> Dict:
     """
     Execute a trade order.
 
@@ -245,11 +245,15 @@ def execute_order(ticker: str, action: str, quantity: float,
         ticker: Stock symbol
         action: 'BUY' or 'SELL'
         quantity: Number of shares
-        order_type: 'market' or 'limit'
-        mode: 'paper' or 'live'
+        order_type: 'market' or 'limit' (default: 'market')
+        mode: 'paper' or 'live' (default: 'paper' for safety)
 
     Returns:
         Dict with order status and details
+
+    Note:
+        Defaults to paper mode for safety. Use mode='live' explicitly
+        for real trading (connects to Alpaca based on ALPACA_PAPER env var).
     """
     try:
         executor = OrderExecutor(mode=mode)
