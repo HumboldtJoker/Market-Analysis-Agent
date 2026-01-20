@@ -72,7 +72,7 @@ pip install -r requirements.txt
 from trading_agent import TradingAgent
 
 # Create agent (paper mode, $100k simulated capital)
-agent = TradingAgent(mode="paper", initial_cash=100000)
+agent = TradingAgent(mode="local", initial_cash=100000)
 
 # Analyze a stock
 result = agent.analyze_and_recommend("AAPL", verbose=True)
@@ -137,7 +137,7 @@ print(result["final_answer"])
 **Goal:** Verify risk limits are enforced
 
 **Steps:**
-1. Create agent with small cash: `TradingAgent(mode="paper", initial_cash=5000)`
+1. Create agent with small cash: `TradingAgent(mode="local", initial_cash=5000)`
 2. Try to buy too many shares of an expensive stock
 3. Make several losing trades to trigger circuit breaker
 4. Try to trade after circuit breaker

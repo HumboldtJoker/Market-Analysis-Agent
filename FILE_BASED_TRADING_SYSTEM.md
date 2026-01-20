@@ -127,7 +127,7 @@ If action needed, Strategy Agent writes `trading_instructions.json`:
 ```python
 from order_executor import OrderExecutor
 
-executor = OrderExecutor(mode='live')
+executor = OrderExecutor(mode='alpaca')
 result = executor.execute_instructions('trading_instructions.json')
 ```
 
@@ -315,7 +315,7 @@ logger.log_review(
 ```python
 from order_executor import OrderExecutor
 
-executor = OrderExecutor(mode='live')
+executor = OrderExecutor(mode='alpaca')
 result = executor.execute_instructions('trading_instructions.json')
 
 if result["success"]:

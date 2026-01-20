@@ -352,7 +352,7 @@ enable_auto_execute = False
 ### Manual Portfolio Review:
 ```python
 from order_executor import OrderExecutor
-executor = OrderExecutor(mode="paper")
+executor = OrderExecutor(mode="local")
 print(executor.get_portfolio_summary())
 ```
 
