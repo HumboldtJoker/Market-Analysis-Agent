@@ -151,12 +151,14 @@ Get macro economic regime and risk assessment.
 
 ---
 
-### `get_portfolio(mode: str = 'live') -> Dict`
+### `get_portfolio(mode: str = 'alpaca') -> Dict`
 
 Get current portfolio summary.
 
 **Arguments:**
-- `mode`: 'paper' or 'live' (default: 'live')
+- `mode`: 'local' or 'alpaca' (default: 'alpaca')
+  - `'local'`: Simulated portfolio (no API)
+  - `'alpaca'`: Alpaca API (paper vs live per ALPACA_PAPER env)
 
 **Returns:**
 ```python
@@ -206,7 +208,7 @@ Get current market status and calendar.
 
 ---
 
-### `execute_order(ticker, action, quantity, order_type='market', mode='paper') -> Dict`
+### `execute_order(ticker, action, quantity, order_type='market', mode='local') -> Dict`
 
 Execute a trade order.
 
@@ -215,7 +217,15 @@ Execute a trade order.
 - `action`: 'BUY' or 'SELL'
 - `quantity`: Number of shares
 - `order_type`: 'market' or 'limit' (default: 'market')
-- `mode`: 'paper' or 'live' (default: 'paper')
+- `mode`: 'local' or 'alpaca' (default: 'local' for safety)
+  - `'local'`: Simulated trading (no API)
+  - `'alpaca'`: Alpaca API (paper vs live per ALPACA_PAPER env)
+
+**Security Validations:**
+- Rejects orders > 100,000 shares
+- Verifies sufficient shares before SELL
+- Verifies sufficient cash before BUY
+- Warns on large orders (> 25% of portfolio)
 
 **Returns:**
 ```python

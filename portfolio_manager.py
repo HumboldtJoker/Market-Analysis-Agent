@@ -75,21 +75,29 @@ class PortfolioManager:
     Supports both paper trading (simulated) and live trading (Alpaca API)
     """
 
-    def __init__(self, mode: str = "paper", initial_cash: float = 100000.0,
+    def __init__(self, mode: str = "local", initial_cash: float = 100000.0,
                  storage_path: str = "portfolio_state.json"):
         """
         Initialize portfolio manager
 
         Args:
-            mode: 'paper' for simulated trading, 'live' for real trading
-            initial_cash: Starting cash balance (paper mode only)
-            storage_path: Path to save portfolio state (paper mode only)
+            mode: Trading mode
+                - 'local': Fully simulated trading (no API calls)
+                - 'alpaca': Use Alpaca API (paper vs live determined by ALPACA_PAPER env var)
+                - 'paper'/'live': Deprecated aliases for 'local'/'alpaca'
+            initial_cash: Starting cash balance (local mode only)
+            storage_path: Path to save portfolio state (local mode only)
         """
         self.mode = mode.lower()
         self.storage_path = Path(storage_path)
 
-        if self.mode == "paper":
-            # Paper mode: load from file or create new
+        # Backward compatibility: map old names to new names
+        mode_aliases = {'paper': 'local', 'live': 'alpaca'}
+        if self.mode in mode_aliases:
+            self.mode = mode_aliases[self.mode]
+
+        if self.mode == "local":
+            # Local mode: load from file or create new
             if self.storage_path.exists():
                 self.load_state()
             else:
@@ -98,14 +106,14 @@ class PortfolioManager:
                 self.positions: Dict[str, Position] = {}
                 self.trade_history: List[Trade] = []
                 self.save_state()
-        elif self.mode == "live":
-            # Live mode: will sync with Alpaca API
+        elif self.mode == "alpaca":
+            # Alpaca mode: will sync with Alpaca API
             self.cash = 0.0  # Will be fetched from Alpaca
             self.initial_cash = 0.0
             self.positions: Dict[str, Position] = {}
             self.trade_history: List[Trade] = []
         else:
-            raise ValueError(f"Invalid mode: {mode}. Must be 'paper' or 'live'")
+            raise ValueError(f"Invalid mode: {mode}. Must be 'local' or 'alpaca'")
 
     def execute_trade(self, ticker: str, action: str, quantity: float,
                      price: float, commission: float = 0.0) -> Dict:
@@ -199,7 +207,7 @@ class PortfolioManager:
         self.trade_history.append(trade)
 
         # Save state (paper mode only)
-        if self.mode == "paper":
+        if self.mode == "local":
             self.save_state()
 
         return {
@@ -310,7 +318,7 @@ class PortfolioManager:
 
     def save_state(self) -> None:
         """Save portfolio state to JSON (paper mode only)"""
-        if self.mode != "paper":
+        if self.mode != "local":
             return
 
         state = {
@@ -334,7 +342,7 @@ class PortfolioManager:
 
     def load_state(self) -> None:
         """Load portfolio state from JSON (paper mode only)"""
-        if self.mode != "paper":
+        if self.mode != "local":
             return
 
         with open(self.storage_path, 'r') as f:
@@ -362,7 +370,7 @@ class PortfolioManager:
         Args:
             initial_cash: Starting cash balance
         """
-        if self.mode != "paper":
+        if self.mode != "local":
             raise ValueError("Cannot reset live portfolio")
 
         self.cash = initial_cash
@@ -377,7 +385,7 @@ if __name__ == "__main__":
     print("Testing PortfolioManager (Paper Mode)...")
 
     # Create portfolio
-    pm = PortfolioManager(mode="paper", initial_cash=100000)
+    pm = PortfolioManager(mode="local", initial_cash=100000)
 
     print("\n1. Initial State:")
     print(json.dumps(pm.get_portfolio_summary(), indent=2))

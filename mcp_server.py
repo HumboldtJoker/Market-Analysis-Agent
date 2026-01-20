@@ -287,9 +287,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "mode": {
                         "type": "string",
-                        "enum": ["paper", "live"],
-                        "description": "Trading mode (default: paper)",
-                        "default": "paper"
+                        "enum": ["local", "alpaca", "paper", "live"],
+                        "description": "Trading mode: 'local' (simulated) or 'alpaca' (API). Old names 'paper'/'live' still work.",
+                        "default": "local"
                     }
                 },
                 "required": ["ticker", "action", "quantity"]
@@ -330,9 +330,9 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "mode": {
                         "type": "string",
-                        "enum": ["paper", "live"],
-                        "description": "Trading mode (default: paper)",
-                        "default": "paper"
+                        "enum": ["local", "alpaca", "paper", "live"],
+                        "description": "Trading mode: 'local' (simulated) or 'alpaca' (API). Old names 'paper'/'live' still work.",
+                        "default": "alpaca"
                     }
                 },
                 "required": []
@@ -430,7 +430,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         # Phase 3 Execution Tools
         elif name == "execute_order":
-            mode = arguments.get("mode", "paper")
+            mode = arguments.get("mode", "local")
             executor = OrderExecutor(mode=mode)
             result = executor.execute_order(
                 ticker=arguments["ticker"],
@@ -452,7 +452,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=format_result(result))]
 
         elif name == "get_portfolio_summary":
-            mode = arguments.get("mode", "paper")
+            mode = arguments.get("mode", "alpaca")
             executor = OrderExecutor(mode=mode)
             result = executor.get_portfolio_summary()
             return [TextContent(type="text", text=format_result(result))]

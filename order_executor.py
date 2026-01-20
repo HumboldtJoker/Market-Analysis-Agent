@@ -33,18 +33,30 @@ class OrderExecutor:
     - Syncs with Alpaca account state
     """
 
-    def __init__(self, mode: str = "paper", portfolio_manager: Optional[PortfolioManager] = None):
+    def __init__(self, mode: str = "local", portfolio_manager: Optional[PortfolioManager] = None):
         """
         Initialize order executor
 
         Args:
-            mode: 'paper' for simulated trading, 'live' for real trading
+            mode: Trading mode
+                - 'local': Fully simulated trading (no API calls)
+                - 'alpaca': Use Alpaca API (paper vs live determined by ALPACA_PAPER env var)
+                - 'paper'/'live': Deprecated aliases for 'local'/'alpaca'
             portfolio_manager: Existing PortfolioManager instance (optional)
         """
         self.mode = mode.lower()
 
-        if self.mode not in ['paper', 'live']:
-            raise ValueError(f"Invalid mode: {mode}. Must be 'paper' or 'live'")
+        # Backward compatibility: map old names to new names
+        mode_aliases = {'paper': 'local', 'live': 'alpaca'}
+        if self.mode in mode_aliases:
+            import logging
+            logging.warning(
+                f"mode='{self.mode}' is deprecated. Use mode='{mode_aliases[self.mode]}' instead."
+            )
+            self.mode = mode_aliases[self.mode]
+
+        if self.mode not in ['local', 'alpaca']:
+            raise ValueError(f"Invalid mode: {mode}. Must be 'local' or 'alpaca'")
 
         # Portfolio manager
         if portfolio_manager:
@@ -54,7 +66,7 @@ class OrderExecutor:
 
         # Alpaca client (live mode only)
         self.alpaca_client = None
-        if self.mode == "live":
+        if self.mode == "alpaca":
             if not ALPACA_AVAILABLE:
                 raise ImportError(
                     "Alpaca SDK not installed. Run: pip install alpaca-py"
@@ -178,7 +190,7 @@ class OrderExecutor:
                 f"{(order_value/portfolio_value)*100:.1f}% of portfolio"
             )
 
-        if self.mode == "paper":
+        if self.mode == "local":
             return self._execute_paper_order(ticker, action, quantity, order_type, limit_price)
         else:
             return self._execute_live_order(ticker, action, quantity, order_type, limit_price)
@@ -380,7 +392,7 @@ class OrderExecutor:
 
     def get_portfolio_summary(self) -> Dict:
         """Get current portfolio summary"""
-        if self.mode == "live" and self.alpaca_client:
+        if self.mode == "alpaca" and self.alpaca_client:
             # Sync before returning summary
             self._sync_alpaca_state()
 
@@ -388,7 +400,7 @@ class OrderExecutor:
 
     def get_portfolio_value(self) -> float:
         """Get total portfolio value"""
-        if self.mode == "live" and self.alpaca_client:
+        if self.mode == "alpaca" and self.alpaca_client:
             # Sync before returning value
             self._sync_alpaca_state()
 
@@ -396,7 +408,7 @@ class OrderExecutor:
 
     def get_position(self, ticker: str) -> Optional[Dict]:
         """Get current position for a ticker"""
-        if self.mode == "live" and self.alpaca_client:
+        if self.mode == "alpaca" and self.alpaca_client:
             # Sync before returning position
             self._sync_alpaca_state()
 
@@ -415,7 +427,7 @@ class OrderExecutor:
 
     def get_buying_power(self) -> float:
         """Get available buying power (cash)"""
-        if self.mode == "live" and self.alpaca_client:
+        if self.mode == "alpaca" and self.alpaca_client:
             # Sync before returning cash
             self._sync_alpaca_state()
 
@@ -449,7 +461,7 @@ class OrderExecutor:
             }
         """
         # Get current account state
-        if self.mode == "live" and self.alpaca_client:
+        if self.mode == "alpaca" and self.alpaca_client:
             account = self.alpaca_client.get_account()
             cash = float(account.cash)
             equity = float(account.equity)

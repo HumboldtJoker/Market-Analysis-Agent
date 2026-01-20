@@ -62,12 +62,13 @@ VIX_LOG_PATH = Path('vix_log.json')
 class ExecutionMonitor:
     """Autonomous trading execution monitor"""
 
-    def __init__(self, mode: str = "live", check_interval_seconds: int = 300):
+    def __init__(self, mode: str = "alpaca", check_interval_seconds: int = 300):
         """
         Initialize execution monitor
 
         Args:
-            mode: 'live' uses Alpaca API (set ALPACA_PAPER=true for paper mode)
+            mode: 'alpaca' uses Alpaca API (paper vs live determined by ALPACA_PAPER env var)
+                  'local' uses local simulation (no API)
             check_interval_seconds: Seconds between checks (default: 300 = 5 minutes)
         """
         self.mode = mode
@@ -910,8 +911,8 @@ def main():
     Press Ctrl+C to stop monitoring
     """)
 
-    # Initialize and start monitoring (mode="live" uses Alpaca Paper API via ALPACA_PAPER=true)
-    monitor = ExecutionMonitor(mode="live", check_interval_seconds=300)
+    # Initialize and start monitoring (mode="alpaca" uses Alpaca API, paper vs live per ALPACA_PAPER env)
+    monitor = ExecutionMonitor(mode="alpaca", check_interval_seconds=300)
 
     try:
         monitor.monitoring_loop()
