@@ -6,7 +6,7 @@ import yfinance as yf
 import time
 
 load_dotenv()
-executor = OrderExecutor(mode='live')
+executor = OrderExecutor(mode='alpaca')
 
 print('='*70)
 print('DEPLOYING AGGRESSIVE $200K ACTIVE TRADING PORTFOLIO')

@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import json
 
 load_dotenv()
-executor = OrderExecutor(mode='live')
+executor = OrderExecutor(mode='alpaca')
 portfolio = executor.get_portfolio_summary()
 
 print('=' * 70)

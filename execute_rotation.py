@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import time
 
 load_dotenv()
-executor = OrderExecutor(mode='live')
+executor = OrderExecutor(mode='alpaca')
 
 print('=' * 70)
 print('EXECUTING PORTFOLIO ROTATION')
