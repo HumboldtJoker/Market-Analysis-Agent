@@ -95,18 +95,23 @@ class ExecutionMonitor:
         # Autonomous defensive actions (enabled by default for risk management)
         self.autonomous_defense_enabled = True
 
-        # VIX-adaptive stop-loss percentages (tighten in elevated volatility)
+        # Thresholds config file (hot-reloaded each cycle)
+        self.thresholds_file = Path(__file__).parent / 'thresholds.json'
+        self.thresholds_mtime = None
+
+        # VIX-adaptive stop-loss percentages (defaults, can be overridden by config)
         self.vix_stop_losses = {
-            'CALM': 0.20,      # -20% in calm markets
+            'CALM': 0.25,      # -25% in calm markets
             'NORMAL': 0.20,    # -20% in normal markets
             'ELEVATED': 0.15,  # -15% in elevated volatility (TIGHTEN)
             'HIGH': 0.10       # -10% in high volatility (VERY TIGHT)
         }
 
-        # Position-specific stop-loss overrides (tighter thresholds for weak positions)
-        self.position_stop_losses = {
-            'MSFT': 0.03  # -3% cut threshold - STRONG SELL signal, watch closely (2026-01-19)
-        }
+        # Position-specific stop-loss overrides (loaded from config)
+        self.position_stop_losses = {}
+
+        # Load thresholds from config file
+        self._load_thresholds()
 
         # Track actions
         self.check_count = 0
@@ -276,6 +281,46 @@ class ExecutionMonitor:
                     logger.info(f"   Execution: {result['status']}")
 
         return actions
+
+    def _load_thresholds(self):
+        """Load thresholds from config file (hot-reload support)"""
+        try:
+            if not self.thresholds_file.exists():
+                logger.warning(f"Thresholds file not found: {self.thresholds_file}")
+                return False
+
+            # Check if file has been modified
+            current_mtime = self.thresholds_file.stat().st_mtime
+            if self.thresholds_mtime == current_mtime:
+                return False  # No changes
+
+            # Load config
+            with open(self.thresholds_file, 'r') as f:
+                config = json.load(f)
+
+            # Update position-specific thresholds
+            if 'position_stop_losses' in config:
+                self.position_stop_losses = {
+                    ticker: entry['threshold'] if isinstance(entry, dict) else entry
+                    for ticker, entry in config['position_stop_losses'].items()
+                }
+                if self.thresholds_mtime is not None:  # Only log on reload, not initial load
+                    logger.info(f"[HOT RELOAD] Updated position thresholds: {list(self.position_stop_losses.keys())}")
+
+            # Update default stop loss
+            if 'default_stop_loss' in config:
+                self.stop_loss_pct = config['default_stop_loss']
+
+            # Update VIX-based thresholds
+            if 'vix_stop_losses' in config:
+                self.vix_stop_losses.update(config['vix_stop_losses'])
+
+            self.thresholds_mtime = current_mtime
+            return True
+
+        except Exception as e:
+            logger.error(f"Error loading thresholds: {e}")
+            return False
 
     def _load_vix_history(self):
         """Load VIX history from log file"""
@@ -716,6 +761,10 @@ class ExecutionMonitor:
                     continue
 
                 self.check_count += 1
+
+                # Hot-reload thresholds from config file
+                self._load_thresholds()
+
                 logger.info("")
                 logger.info("=" * 70)
                 logger.info(f"MONITORING CHECK #{self.check_count}")
