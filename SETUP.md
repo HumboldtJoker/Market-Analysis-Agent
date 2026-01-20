@@ -1,20 +1,33 @@
 # AutoInvestor Setup Guide
 
-Complete guide to setting up and running AutoInvestor for paper or live trading.
+Complete guide to setting up and running AutoInvestor for local simulation or Alpaca trading.
 
 ## Table of Contents
-- [Quick Start (Paper Mode)](#quick-start-paper-mode)
-- [Paper Trading with Alpaca](#paper-trading-with-alpaca)
-- [Live Trading Setup](#live-trading-setup)
+- [Quick Start (Local Mode)](#quick-start-local-mode)
+- [Alpaca Paper Trading](#alpaca-paper-trading)
+- [Alpaca Live Trading](#alpaca-live-trading)
+- [Unified API](#unified-api)
+- [Execution Monitor](#execution-monitor)
 - [Investor Profile Configuration](#investor-profile-configuration)
 - [Testing Your Setup](#testing-your-setup)
 - [Troubleshooting](#troubleshooting)
 
+## Trading Modes
+
+AutoInvestor supports two trading modes:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `local` | Fully simulated trading (no API) | Testing, learning |
+| `alpaca` | Alpaca API (paper or live per env) | Real paper/live trading |
+
+> **Note:** Old mode names `paper`/`live` still work but are deprecated.
+
 ---
 
-## Quick Start (Paper Mode)
+## Quick Start (Local Mode)
 
-**No API keys needed!** Paper mode uses Yahoo Finance for prices and simulates trading locally.
+**No API keys needed!** Local mode uses Yahoo Finance for prices and simulates trading locally.
 
 ### 1. Install Dependencies
 
@@ -29,13 +42,31 @@ pip install -r requirements.txt
 export ANTHROPIC_API_KEY=sk-ant-your-api-key-here
 ```
 
-### 3. Run a Test Analysis
+### 3. Run a Test Analysis (Unified API - Recommended)
+
+```python
+from autoinvestor_api import get_stock_price, get_technicals, get_portfolio
+
+# Get stock price
+price = get_stock_price('AAPL')
+print(f"AAPL: ${price['price']:.2f}")
+
+# Get technical analysis
+tech = get_technicals('AAPL')
+print(f"Signal: {tech['signal']} (RSI {tech['rsi']:.0f})")
+
+# Check portfolio (local simulation)
+portfolio = get_portfolio(mode='local')
+print(f"Portfolio Value: ${portfolio['total_value']:,.2f}")
+```
+
+### Alternative: Trading Agent
 
 ```python
 from trading_agent import TradingAgent
 
-# Create agent in paper mode
-agent = TradingAgent(mode="paper", initial_cash=100000)
+# Create agent in local mode
+agent = TradingAgent(mode="local", initial_cash=100000)
 
 # Analyze a stock
 result = agent.analyze_and_recommend("AAPL", verbose=True)
@@ -46,7 +77,7 @@ print(result)
 
 ---
 
-## Paper Trading with Alpaca
+## Alpaca Paper Trading
 
 **Free paper trading with real market data** from Alpaca's paper trading account.
 
@@ -68,27 +99,37 @@ cp .env.example .env
 ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
 ALPACA_API_KEY=your-alpaca-key
 ALPACA_SECRET_KEY=your-alpaca-secret
-ALPACA_PAPER=true
-TRADING_MODE=live  # "live" connects to Alpaca (paper account)
+ALPACA_PAPER=true   # true = paper trading, false = live trading
 ```
 
 ### 3. Test Alpaca Connection
 
 ```python
+from autoinvestor_api import get_portfolio
+
+# Get portfolio from Alpaca (mode='alpaca' uses ALPACA_PAPER env)
+portfolio = get_portfolio(mode='alpaca')
+print(f"Cash: ${portfolio['cash']:,.2f}")
+print(f"Portfolio Value: ${portfolio['total_value']:,.2f}")
+print(f"Positions: {portfolio['num_positions']}")
+```
+
+### Alternative: Trading Agent
+
+```python
 from trading_agent import TradingAgent
 
 # Create agent connected to Alpaca paper trading
-agent = TradingAgent(mode="live")
+agent = TradingAgent(mode="alpaca")
 
 # Check portfolio (syncs with Alpaca)
 portfolio = agent._get_portfolio()
 print(f"Buying Power: ${portfolio['cash']:,.2f}")
-print(f"Portfolio Value: ${portfolio['total_value']:,.2f}")
 ```
 
 ---
 
-## Live Trading Setup
+## Alpaca Live Trading
 
 ⚠️ **WARNING: Live trading uses real money!** Test extensively with paper trading first.
 
@@ -120,7 +161,6 @@ ANTHROPIC_API_KEY=sk-ant-your-key
 ALPACA_API_KEY=your-LIVE-alpaca-key  # LIVE keys, not paper!
 ALPACA_SECRET_KEY=your-LIVE-secret
 ALPACA_PAPER=false  # FALSE = real money!
-TRADING_MODE=live
 ```
 
 ### 3. Start with Small Position Sizes
@@ -142,9 +182,9 @@ from investor_profile import InvestorProfile
 profile = InvestorProfile()
 # ... configure with conservative settings
 
-# Create agent with live trading ENABLED
+# Create agent with Alpaca trading (REAL MONEY if ALPACA_PAPER=false!)
 agent = TradingAgent(
-    mode="live",  # REAL MONEY!
+    mode="alpaca",
     investor_profile=profile
 )
 
@@ -155,6 +195,63 @@ print(result["final_answer"])
 # Only use execute_recommendation() after extensive testing!
 # result = agent.execute_recommendation("AAPL")
 ```
+
+---
+
+## Unified API
+
+The `autoinvestor_api` module provides a clean, consistent interface to all tools:
+
+```python
+from autoinvestor_api import (
+    get_stock_price,    # Price, volume, 52w range
+    get_technicals,     # Signal, RSI, MACD, SMA
+    get_sentiment,      # News sentiment analysis
+    get_macro_regime,   # FRED data, VIX, regime
+    get_portfolio,      # Positions, P&L
+    get_market_status,  # Date, market open/closed
+    execute_order,      # Trade execution
+    scan_technicals     # Batch technical scan
+)
+```
+
+See [API_REFERENCE.md](API_REFERENCE.md) for complete documentation.
+
+---
+
+## Execution Monitor
+
+The execution monitor runs autonomously to protect your portfolio:
+
+```bash
+# Start the monitor (runs every 5 minutes during market hours)
+python execution_monitor.py &
+```
+
+### Features
+- **Stop-loss monitoring**: Auto-executes when positions hit thresholds
+- **VIX-adaptive thresholds**: Tighter stops in high volatility
+- **Hot-reload thresholds**: Edit `thresholds.json` - no restart needed
+- **Market hours awareness**: Only runs during trading hours
+
+### Configure Position Thresholds
+
+Edit `thresholds.json` to set position-specific stop-losses:
+
+```json
+{
+  "position_stop_losses": {
+    "MSFT": {
+      "threshold": 0.03,
+      "reason": "STRONG SELL signal",
+      "added": "2026-01-19"
+    }
+  },
+  "default_stop_loss": 0.20
+}
+```
+
+Changes take effect on the next monitor cycle (~5 min).
 
 ---
 
@@ -189,7 +286,7 @@ profiler.profile = json.load(open('my_profile.json'))
 
 # Create agent with profile
 agent = TradingAgent(
-    mode="paper",
+    mode="local",
     investor_profile=profiler
 )
 
@@ -206,7 +303,7 @@ result = agent.analyze_and_recommend("NVDA", verbose=True)
 ```python
 from trading_agent import TradingAgent
 
-agent = TradingAgent(mode="paper")
+agent = TradingAgent(mode="local")
 
 # Just analyze, don't trade
 result = agent.analyze_and_recommend("MSFT", verbose=True)
@@ -219,7 +316,7 @@ result = agent.analyze_and_recommend("MSFT", verbose=True)
 ```python
 from trading_agent import TradingAgent
 
-agent = TradingAgent(mode="paper", initial_cash=100000)
+agent = TradingAgent(mode="local", initial_cash=100000)
 
 # Will analyze AND execute trades (simulated)
 result = agent.execute_recommendation("AAPL", verbose=True)
@@ -237,7 +334,7 @@ print(f"Positions: {portfolio['num_positions']}")
 ```python
 from trading_agent import TradingAgent
 
-agent = TradingAgent(mode="paper", initial_cash=10000)  # Small account
+agent = TradingAgent(mode="local", initial_cash=10000)  # Small account
 
 # Try to buy too much (should be rejected)
 result = agent._execute_trade("AAPL", "BUY", 1000, order_type="market")
@@ -252,7 +349,7 @@ print(result)  # Should see rejection reason
 ```python
 from trading_agent import TradingAgent
 
-agent = TradingAgent(mode="paper")
+agent = TradingAgent(mode="local")
 
 # Make several trades
 agent.execute_recommendation("AAPL")

@@ -31,7 +31,8 @@ An intelligent investment research and trading agent that uses Claude AI with Re
 ### Prerequisites
 
 - Python 3.11 or higher
-- Anthropic API key ([Get one here](https://console.anthropic.com/))
+- Alpaca API key for trading ([Get one here](https://alpaca.markets/))
+- FRED API key for macro analysis ([Get one here](https://fred.stlouisfed.org/docs/api/api_key.html))
 
 ### Installation
 
@@ -43,9 +44,42 @@ cd autoinvestor
 # Install dependencies
 pip install -r requirements.txt
 
-# Set your API key
-export ANTHROPIC_API_KEY="your-api-key-here"
+# Set your API keys
+export ALPACA_API_KEY="your-alpaca-key"
+export ALPACA_SECRET_KEY="your-alpaca-secret"
+export ALPACA_PAPER=true  # Use paper trading
+export FRED_API_KEY="your-fred-key"
 ```
+
+### Unified API (Recommended)
+
+The `autoinvestor_api` module provides a clean interface to all tools:
+
+```python
+from autoinvestor_api import (
+    get_stock_price,    # Price, volume, 52w range
+    get_technicals,     # Signal, RSI, MACD, SMA
+    get_sentiment,      # News sentiment analysis
+    get_macro_regime,   # FRED data, VIX, regime
+    get_portfolio,      # Positions, P&L
+    get_market_status,  # Date, market open/closed
+    execute_order,      # Trade execution
+    scan_technicals     # Batch technical scan
+)
+
+# Quick analysis
+price = get_stock_price('NVDA')
+print(f"NVDA: ${price['price']:.2f}")
+
+tech = get_technicals('NVDA')
+print(f"Signal: {tech['signal']} (RSI {tech['rsi']:.0f})")
+
+# Check portfolio (mode='alpaca' for Alpaca, mode='local' for simulation)
+portfolio = get_portfolio(mode='alpaca')
+print(f"Value: ${portfolio['total_value']:,.2f}")
+```
+
+See [API_REFERENCE.md](API_REFERENCE.md) for complete documentation.
 
 ### Basic Usage
 

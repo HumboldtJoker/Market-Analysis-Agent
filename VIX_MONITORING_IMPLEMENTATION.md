@@ -538,7 +538,7 @@ You can manually trigger a review anytime:
 from strategy_trigger import StrategyTrigger
 from order_executor import OrderExecutor
 
-executor = OrderExecutor(mode="live")
+executor = OrderExecutor(mode="alpaca")
 portfolio = executor.get_portfolio_summary()
 
 trigger = StrategyTrigger()

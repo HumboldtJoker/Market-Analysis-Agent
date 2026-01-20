@@ -295,7 +295,7 @@ from dotenv import load_dotenv
 import yfinance as yf
 
 load_dotenv()
-executor = OrderExecutor(mode='live')
+executor = OrderExecutor(mode='alpaca')
 
 print('='*70)
 print('SCALING AUTOINVESTOR: $100 → $200,000')
