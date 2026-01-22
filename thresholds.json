@@ -6,6 +6,14 @@
       "added": "2026-01-19"
     }
   },
+  "profit_protection": {
+    "MRNA": {
+      "min_price": 48.50,
+      "reason": "Lock in gains - RSI 88 extremely overbought, ride momentum but protect +20% profit",
+      "trigger_review": true,
+      "added": "2026-01-22"
+    }
+  },
   "default_stop_loss": 0.20,
   "vix_stop_losses": {
     "CALM": 0.25,

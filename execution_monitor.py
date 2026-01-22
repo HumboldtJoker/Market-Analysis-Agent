@@ -111,6 +111,9 @@ class ExecutionMonitor:
         # Position-specific stop-loss overrides (loaded from config)
         self.position_stop_losses = {}
 
+        # Profit protection thresholds (trailing stops to lock in gains)
+        self.profit_protection = {}
+
         # Load thresholds from config file
         self._load_thresholds()
 
@@ -225,6 +228,94 @@ class ExecutionMonitor:
 
         return actions
 
+    def check_profit_protection(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
+        """Check positions for profit protection triggers (trailing stops to lock in gains)"""
+        actions = []
+
+        for pos in positions:
+            ticker = pos['ticker']
+            if ticker not in self.profit_protection:
+                continue
+            if ticker not in current_prices:
+                continue
+
+            protection = self.profit_protection[ticker]
+            min_price = protection.get('min_price', 0)
+            current_price = current_prices[ticker]
+            entry_price = pos['avg_cost']
+            quantity = pos['quantity']
+
+            if current_price <= min_price:
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                reason = protection.get('reason', 'Profit protection triggered')
+
+                logger.warning(f"[ALERT] PROFIT PROTECTION TRIGGERED: {ticker}")
+                logger.info(f"   Entry: ${entry_price:.2f}")
+                logger.info(f"   Current: ${current_price:.2f}")
+                logger.info(f"   Min Price: ${min_price:.2f}")
+                logger.info(f"   P&L at exit: {pnl_pct:+.2f}%")
+                logger.info(f"   Reason: {reason}")
+
+                # Execute sell (market order for immediate execution)
+                result = self.executor.execute_order(
+                    ticker=ticker,
+                    action='SELL',
+                    quantity=quantity,
+                    order_type='market'
+                )
+
+                actions.append({
+                    'type': 'PROFIT_PROTECTION_SELL',
+                    'ticker': ticker,
+                    'reason': reason,
+                    'quantity': quantity,
+                    'pnl_pct': pnl_pct,
+                    'execution': result
+                })
+
+                logger.info(f"   Execution: {result['status']}")
+
+                # Trigger strategy review if configured
+                if protection.get('trigger_review', False):
+                    self._trigger_profit_protection_review(ticker, current_price, pnl_pct, quantity)
+
+        return actions
+
+    def _trigger_profit_protection_review(self, ticker: str, exit_price: float, pnl_pct: float, quantity: float):
+        """Trigger strategy review after profit protection sell"""
+        try:
+            proceeds = exit_price * quantity
+            portfolio = self.executor.get_portfolio_summary()
+
+            alert = {
+                'timestamp': datetime.now().isoformat(),
+                'alert_type': 'PROFIT_PROTECTION_REVIEW',
+                'reason': f'{ticker} profit protection triggered - redeploy ${proceeds:,.0f}',
+                'sold_position': {
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'exit_price': exit_price,
+                    'pnl_pct': pnl_pct,
+                    'proceeds': proceeds
+                },
+                'portfolio_snapshot': portfolio,
+                'status': 'pending'
+            }
+
+            with open('scheduled_review_needed.json', 'w') as f:
+                json.dump(alert, f, indent=2, default=str)
+
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info(f"[STRATEGY REVIEW TRIGGERED] Redeploy {ticker} proceeds")
+            logger.info(f"   Proceeds: ${proceeds:,.2f}")
+            logger.info(f"   Alert written to: scheduled_review_needed.json")
+            logger.info("=" * 70)
+            logger.info("")
+
+        except Exception as e:
+            logger.error(f"Error triggering profit protection review: {e}", exc_info=True)
+
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check for dip-buying opportunities on STRONG BUY stocks"""
         actions = []
@@ -315,6 +406,12 @@ class ExecutionMonitor:
             # Update VIX-based thresholds
             if 'vix_stop_losses' in config:
                 self.vix_stop_losses.update(config['vix_stop_losses'])
+
+            # Update profit protection thresholds (trailing stops to lock in gains)
+            if 'profit_protection' in config:
+                self.profit_protection = config['profit_protection']
+                if self.thresholds_mtime is not None:
+                    logger.info(f"[HOT RELOAD] Updated profit protection: {list(self.profit_protection.keys())}")
 
             self.thresholds_mtime = current_mtime
             return True
@@ -836,11 +933,15 @@ class ExecutionMonitor:
                 stop_loss_actions = self.check_stop_losses(positions, current_prices)
                 actions.extend(stop_loss_actions)
 
-                # 2. Check dip-buying opportunities
+                # 2. Check profit protection (trailing stops to lock in gains)
+                profit_protection_actions = self.check_profit_protection(positions, current_prices)
+                actions.extend(profit_protection_actions)
+
+                # 3. Check dip-buying opportunities
                 dip_buy_actions = self.check_dip_buying(positions, current_prices)
                 actions.extend(dip_buy_actions)
 
-                # 3. Check circuit breaker
+                # 4. Check circuit breaker
                 updated_portfolio = self.executor.get_portfolio_summary()
                 breaker_triggered, breaker_info = self.risk_manager.check_circuit_breaker(
                     updated_portfolio['total_value']
