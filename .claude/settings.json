@@ -1,18 +1,4 @@
 {
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "py \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_pending_reviews.py\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  },
   "agent": "autoinvestor",
   "agents": {
     "autoinvestor": {
