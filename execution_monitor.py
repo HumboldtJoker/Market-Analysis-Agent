@@ -17,6 +17,7 @@ Pure Python implementation with ZERO LLM costs:
 import time
 import json
 import os
+import subprocess
 from datetime import datetime, time as dt_time, date
 from pathlib import Path
 import pytz
@@ -313,8 +314,73 @@ class ExecutionMonitor:
             logger.info("=" * 70)
             logger.info("")
 
+            # Invoke Claude strategy agent to process the review
+            self._invoke_strategy_agent('profit_protection', ticker)
+
         except Exception as e:
             logger.error(f"Error triggering profit protection review: {e}", exc_info=True)
+
+    def _invoke_strategy_agent(self, trigger_type: str, context: str = ""):
+        """
+        Invoke Claude Code CLI to process a strategy review autonomously.
+
+        This allows the monitor to trigger intelligent redeployment decisions
+        without requiring user interaction.
+        """
+        try:
+            # Build the prompt based on trigger type
+            if trigger_type == 'profit_protection':
+                prompt = f"""A profit protection sell was triggered for {context}.
+Run /strategy-review to analyze the portfolio and redeploy the proceeds.
+Execute trades as recommended by the strategy review skill."""
+            elif trigger_type == 'scheduled':
+                prompt = """A scheduled 4-hour strategy review is due.
+Run /strategy-review to scan for opportunities and adjust positions as needed."""
+            elif trigger_type == 'vix_alert':
+                prompt = f"""VIX regime changed: {context}
+Run /strategy-review to assess defensive posture and adjust positions if needed."""
+            else:
+                prompt = "Run /strategy-review to process the pending alert."
+
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("[INVOKING STRATEGY AGENT] Claude Code CLI")
+            logger.info(f"   Trigger: {trigger_type}")
+            logger.info(f"   Prompt: {prompt[:80]}...")
+            logger.info("=" * 70)
+
+            # Get project directory for working directory
+            project_dir = Path(__file__).parent
+
+            # Invoke Claude Code CLI
+            result = subprocess.run(
+                [
+                    'claude',
+                    '-p', prompt,
+                    '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task',
+                    '--print'  # Output to stdout instead of interactive
+                ],
+                cwd=str(project_dir),
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode == 0:
+                logger.info("[STRATEGY AGENT] Review completed successfully")
+                # Log truncated output
+                output_preview = result.stdout[:500] if result.stdout else "(no output)"
+                logger.info(f"   Output: {output_preview}...")
+            else:
+                logger.error(f"[STRATEGY AGENT] Failed with code {result.returncode}")
+                logger.error(f"   stderr: {result.stderr[:500] if result.stderr else '(none)'}")
+
+        except subprocess.TimeoutExpired:
+            logger.error("[STRATEGY AGENT] Timed out after 5 minutes")
+        except FileNotFoundError:
+            logger.warning("[STRATEGY AGENT] Claude CLI not found - review requires manual processing")
+        except Exception as e:
+            logger.error(f"[STRATEGY AGENT] Error invoking Claude: {e}", exc_info=True)
 
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check for dip-buying opportunities on STRONG BUY stocks"""
@@ -577,9 +643,11 @@ class ExecutionMonitor:
 
             logger.info(f"VIX: {self.previous_vix:.2f} ({self.previous_vix_regime}) → {vix_level:.2f} ({regime})")
             logger.info(f"Alert written to: {alert_file}")
-            logger.info("[ACTION] Strategy Agent will review during next check-in")
             logger.info("=" * 70)
             logger.info("")
+
+            # Invoke Claude strategy agent to process the review
+            self._invoke_strategy_agent('vix_alert', f"{self.previous_vix_regime} -> {regime}")
 
         except Exception as e:
             logger.error(f"Error triggering strategic review: {e}", exc_info=True)
@@ -678,13 +746,15 @@ class ExecutionMonitor:
 
             logger.info(f"Review interval: Every {self.review_interval_hours} hours")
             logger.info(f"Alert written to: {alert_file}")
-            logger.info("[ACTION] Strategy Agent will perform proactive analysis")
             logger.info("=" * 70)
             logger.info("")
 
             # Update last review time
             self.last_scheduled_review = datetime.now()
             self._save_last_review_time()
+
+            # Invoke Claude strategy agent to process the review
+            self._invoke_strategy_agent('scheduled')
 
         except Exception as e:
             logger.error(f"Error triggering scheduled review: {e}", exc_info=True)
