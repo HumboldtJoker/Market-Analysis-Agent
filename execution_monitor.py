@@ -354,11 +354,13 @@ Run /strategy-review to assess defensive posture and adjust positions if needed.
 
             # Invoke Claude Code CLI
             # -p flag enables print mode (non-interactive, outputs to stdout)
+            # --dangerously-skip-permissions needed for autonomous operation
             result = subprocess.run(
                 [
                     'claude',
                     '-p', prompt,
-                    '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task'
+                    '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task',
+                    '--dangerously-skip-permissions'
                 ],
                 cwd=str(project_dir),
                 capture_output=True,
