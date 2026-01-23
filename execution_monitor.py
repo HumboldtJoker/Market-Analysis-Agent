@@ -353,17 +353,17 @@ Run /strategy-review to assess defensive posture and adjust positions if needed.
             project_dir = Path(__file__).parent
 
             # Invoke Claude Code CLI
+            # -p flag enables print mode (non-interactive, outputs to stdout)
             result = subprocess.run(
                 [
                     'claude',
                     '-p', prompt,
-                    '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task',
-                    '--print'  # Output to stdout instead of interactive
+                    '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task'
                 ],
                 cwd=str(project_dir),
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=600  # 10 minute timeout for complex reviews
             )
 
             if result.returncode == 0:
