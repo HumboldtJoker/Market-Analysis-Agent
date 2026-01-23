@@ -8,18 +8,24 @@
   },
   "profit_protection": {
     "MRNA": {
-      "min_price": 48.50,
+      "min_price": 48.5,
       "reason": "Lock in gains - RSI 88 extremely overbought, ride momentum but protect +20% profit",
       "trigger_review": true,
       "added": "2026-01-22"
+    },
+    "MU": {
+      "min_price": 360.0,
+      "reason": "Lock in gains - RSI 78 overbought, +43% above SMA50, very extended",
+      "trigger_review": true,
+      "added": "2026-01-23"
     }
   },
-  "default_stop_loss": 0.20,
+  "default_stop_loss": 0.2,
   "vix_stop_losses": {
     "CALM": 0.25,
-    "NORMAL": 0.20,
+    "NORMAL": 0.2,
     "ELEVATED": 0.15,
-    "HIGH": 0.10
+    "HIGH": 0.1
   },
   "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle (5 min)"
 }
