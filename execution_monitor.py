@@ -360,27 +360,62 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             # Invoke Claude Code CLI
             # -p flag enables print mode (non-interactive, outputs to stdout)
             # --dangerously-skip-permissions needed for autonomous operation
+            # --output-format json for structured output with cost tracking
+            import shutil
+            import json as json_module
+            claude_path = shutil.which('claude') or 'claude'
+
+            # Pass environment with auth token
+            # Supports both CLAUDE_CODE_OAUTH_TOKEN (subscription) and ANTHROPIC_API_KEY (API)
+            env = os.environ.copy()
+
+            # Check which auth method is available
+            has_oauth = bool(os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'))
+            has_api_key = bool(os.environ.get('ANTHROPIC_API_KEY')) and os.environ.get('ANTHROPIC_API_KEY') != 'your_anthropic_api_key_here'
+
+            if not has_oauth and not has_api_key:
+                logger.warning("[STRATEGY AGENT] No auth configured - need CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY")
+                return
+
             result = subprocess.run(
                 [
-                    'claude',
+                    claude_path,
                     '-p', prompt,
                     '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task',
-                    '--dangerously-skip-permissions'
+                    '--dangerously-skip-permissions',
+                    '--output-format', 'json'
                 ],
                 cwd=str(project_dir),
                 capture_output=True,
                 text=True,
-                timeout=600  # 10 minute timeout for complex reviews
+                timeout=600,  # 10 minute timeout for complex reviews
+                env=env  # Pass auth token from .env
             )
 
             if result.returncode == 0:
                 logger.info("[STRATEGY AGENT] Review completed successfully")
-                # Log truncated output
-                output_preview = result.stdout[:500] if result.stdout else "(no output)"
-                logger.info(f"   Output: {output_preview}...")
+                # Parse JSON output for metrics
+                try:
+                    output_data = json_module.loads(result.stdout)
+                    cost = output_data.get('total_cost_usd', 0)
+                    duration = output_data.get('duration_ms', 0) / 1000
+                    response = output_data.get('result', '')
+                    logger.info(f"   Duration: {duration:.1f}s | Cost: ${cost:.4f}")
+                    logger.info(f"   Response: {response[:300]}...")
+
+                    # Save full response to file for review
+                    response_file = project_dir / 'last_agent_response.json'
+                    with open(response_file, 'w') as f:
+                        json_module.dump(output_data, f, indent=2)
+                    logger.info(f"   Full response saved to: {response_file}")
+                except json_module.JSONDecodeError:
+                    logger.info(f"   Output: {result.stdout[:500]}...")
             else:
                 logger.error(f"[STRATEGY AGENT] Failed with code {result.returncode}")
+                logger.error(f"   stdout: {result.stdout[:500] if result.stdout else '(none)'}")
                 logger.error(f"   stderr: {result.stderr[:500] if result.stderr else '(none)'}")
+                logger.error(f"   Claude path: {claude_path}")
+                logger.error(f"   Auth: OAuth={'yes' if has_oauth else 'no'}, API={'yes' if has_api_key else 'no'}")
 
         except subprocess.TimeoutExpired:
             logger.error("[STRATEGY AGENT] Timed out after 5 minutes")
