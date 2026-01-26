@@ -33,6 +33,7 @@ load_dotenv()
 
 from order_executor import OrderExecutor
 from risk_manager import RiskManager
+from autoinvestor_api import get_correlation, get_sectors
 
 # Import strategy trigger for VIX-based reviews
 try:
@@ -332,13 +333,17 @@ class ExecutionMonitor:
             if trigger_type == 'profit_protection':
                 prompt = f"""A profit protection sell was triggered for {context}.
 Run /strategy-review to analyze the portfolio and redeploy the proceeds.
+Check portfolio correlation and sector concentration before adding positions.
 Execute trades as recommended by the strategy review skill."""
             elif trigger_type == 'scheduled':
                 prompt = """A scheduled 4-hour strategy review is due.
-Run /strategy-review to scan for opportunities and adjust positions as needed."""
+Run /strategy-review to scan for opportunities and adjust positions as needed.
+Check portfolio_health in scheduled_review_needed.json for correlation and sector data.
+Address any concentration risks or high-correlation pairs flagged in the alert."""
             elif trigger_type == 'vix_alert':
                 prompt = f"""VIX regime changed: {context}
-Run /strategy-review to assess defensive posture and adjust positions if needed."""
+Run /strategy-review to assess defensive posture and adjust positions if needed.
+Check portfolio correlation - high-correlation positions amplify risk during volatility."""
             else:
                 prompt = "Run /strategy-review to process the pending alert."
 
@@ -729,6 +734,45 @@ Run /strategy-review to assess defensive posture and adjust positions if needed.
             # Get current portfolio context
             portfolio = self.executor.get_portfolio_summary()
 
+            # Get portfolio health metrics (correlation and sector analysis)
+            tickers = [p['ticker'] for p in portfolio.get('positions', [])]
+            portfolio_health = {}
+
+            if len(tickers) >= 2:
+                try:
+                    correlation = get_correlation(tickers)
+                    portfolio_health['correlation'] = {
+                        'diversification_score': correlation.get('diversification_score', 0),
+                        'avg_correlation': correlation.get('avg_correlation', 0),
+                        'assessment': correlation.get('assessment', 'UNKNOWN'),
+                        'high_correlation_pairs': correlation.get('high_correlation_pairs', [])
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not get correlation data: {e}")
+                    portfolio_health['correlation'] = {'error': str(e)}
+
+            if len(tickers) >= 1:
+                try:
+                    sectors = get_sectors(tickers)
+                    portfolio_health['sectors'] = {
+                        'diversification_score': sectors.get('diversification_score', 0),
+                        'largest_sector': sectors.get('largest_sector', 'Unknown'),
+                        'largest_sector_pct': sectors.get('largest_sector_pct', 0),
+                        'assessment': sectors.get('assessment', 'UNKNOWN'),
+                        'concentration_risks': sectors.get('concentration_risks', [])
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not get sector data: {e}")
+                    portfolio_health['sectors'] = {'error': str(e)}
+
+            # Log portfolio health summary
+            if portfolio_health.get('correlation'):
+                corr = portfolio_health['correlation']
+                logger.info(f"Portfolio Correlation: {corr.get('assessment', 'N/A')} (score: {corr.get('diversification_score', 0)}/100)")
+            if portfolio_health.get('sectors'):
+                sect = portfolio_health['sectors']
+                logger.info(f"Sector Concentration: {sect.get('assessment', 'N/A')} (largest: {sect.get('largest_sector', 'N/A')} @ {sect.get('largest_sector_pct', 0):.1f}%)")
+
             # Create scheduled review alert
             alert = {
                 'timestamp': datetime.now().isoformat(),
@@ -736,6 +780,7 @@ Run /strategy-review to assess defensive posture and adjust positions if needed.
                 'interval_hours': self.review_interval_hours,
                 'reason': 'Proactive market opportunity scan',
                 'portfolio_snapshot': portfolio,
+                'portfolio_health': portfolio_health,
                 'current_vix': self.previous_vix if self.previous_vix else 'N/A',
                 'vix_regime': self.previous_vix_regime if self.previous_vix_regime else 'N/A',
                 'status': 'pending'

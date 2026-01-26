@@ -14,7 +14,9 @@ Usage:
         get_macro_regime,
         get_portfolio,
         get_market_status,
-        execute_order
+        execute_order,
+        get_correlation,    # Portfolio diversification analysis
+        get_sectors         # Sector allocation analysis
     )
 
 All functions automatically load environment variables from .env
@@ -34,6 +36,8 @@ from news_sentiment import get_news_sentiment, analyze_news_sentiment
 from macro_agent import MacroAgent
 from order_executor import OrderExecutor
 from market_status import get_market_status as _get_market_status
+from portfolio_correlation import analyze_portfolio_correlation, get_portfolio_metrics
+from sector_allocation import analyze_sector_allocation, get_sector_allocation
 
 
 def get_stock_price(ticker: str) -> Dict:
@@ -269,6 +273,98 @@ def execute_order(ticker: str, action: str, quantity: float,
         return {'error': str(e)}
 
 
+def get_correlation(tickers: list, period: str = '1y') -> Dict:
+    """
+    Get portfolio correlation and diversification analysis.
+
+    Args:
+        tickers: List of stock symbols (minimum 2)
+        period: Historical period ('6mo', '1y', '2y')
+
+    Returns:
+        Dict with keys: diversification_score, avg_correlation,
+                       high_correlation_pairs, stocks (metrics per ticker)
+    """
+    try:
+        result = get_portfolio_metrics(tickers, period)
+
+        if 'error' in result:
+            return result
+
+        # Find high correlation pairs (>0.7)
+        high_corr_pairs = []
+        correlations = result.get('correlations', {})
+        ticker_list = list(correlations.keys())
+
+        for i, t1 in enumerate(ticker_list):
+            for t2 in ticker_list[i+1:]:
+                if t1 in correlations and t2 in correlations.get(t1, {}):
+                    corr = correlations[t1][t2]
+                    if abs(corr) >= 0.7:
+                        high_corr_pairs.append({
+                            'pair': f"{t1}-{t2}",
+                            'correlation': round(corr, 3)
+                        })
+
+        return {
+            'tickers': tickers,
+            'diversification_score': result.get('diversification_score', 0),
+            'avg_correlation': result.get('avg_correlation', 0),
+            'high_correlation_pairs': high_corr_pairs,
+            'stocks': result.get('stocks', {}),
+            'assessment': 'GOOD' if result.get('avg_correlation', 1) < 0.5 else
+                         'FAIR' if result.get('avg_correlation', 1) < 0.7 else 'POOR'
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def get_sectors(tickers: list, weights: list = None) -> Dict:
+    """
+    Get sector allocation and concentration risk analysis.
+
+    Args:
+        tickers: List of stock symbols
+        weights: Optional portfolio weights (must sum to 1.0)
+
+    Returns:
+        Dict with keys: sector_exposure, concentration_risks,
+                       diversification_score, largest_sector
+    """
+    try:
+        result = get_sector_allocation(tickers, weights)
+
+        if 'error' in result:
+            return result
+
+        sector_exposure = result.get('sector_exposure', {})
+
+        # Find concentration risks (>30%)
+        concentration_risks = [
+            {'sector': sector, 'exposure': pct}
+            for sector, pct in sector_exposure.items()
+            if pct > 30 and sector != 'Unknown'
+        ]
+
+        # Find largest sector
+        largest_sector = max(sector_exposure.items(), key=lambda x: x[1]) if sector_exposure else ('Unknown', 0)
+
+        return {
+            'tickers': tickers,
+            'sector_exposure': sector_exposure,
+            'num_sectors': result.get('num_sectors', 0),
+            'diversification_score': result.get('diversification_score', 0),
+            'largest_sector': largest_sector[0],
+            'largest_sector_pct': largest_sector[1],
+            'concentration_risks': concentration_risks,
+            'assessment': 'POOR' if largest_sector[1] > 40 else
+                         'FAIR' if largest_sector[1] > 30 else
+                         'GOOD' if largest_sector[1] > 20 else 'EXCELLENT'
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
 def scan_technicals(tickers: list) -> list:
     """
     Scan multiple tickers for technical signals.
@@ -293,6 +389,8 @@ analyze_stock = get_technicals
 check_sentiment = get_sentiment
 market_regime = get_macro_regime
 portfolio_status = get_portfolio
+check_correlation = get_correlation
+check_sectors = get_sectors
 
 
 if __name__ == '__main__':

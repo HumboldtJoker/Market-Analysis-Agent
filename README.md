@@ -377,6 +377,79 @@ agent.tools.register(Tool(
 - [ ] Multi-timeframe strategy testing
 - [ ] Performance attribution analysis
 
+### Phase 4: Production Hardening (Planned)
+
+#### Memory & Context Management
+Currently using session handoff documents. Future evolution:
+
+1. **Structured Trade Log** (Near-term)
+   - Append-only JSON-lines file with: timestamp, ticker, action, price, quantity, rationale, outcome
+   - Queryable for analytics ("win rate on momentum plays")
+   - Source of truth for all trades
+
+2. **Periodic Summaries** (Near-term)
+   - Weekly/monthly rollups of learnings, strategy evolution, pattern observations
+   - "Institutional memory" that fits in context window
+   - Human-curated or agent-generated
+
+3. **RAG for Deep History** (When needed)
+   - Full session transcripts, detailed rationales
+   - Query when specific historical context needed ("how did we handle the March VIX spike?")
+   - Worth implementing after 6+ months of trading history
+
+#### Containerization (Docker/Kubernetes)
+Currently running as background Python process. Future options:
+
+**Docker (Recommended first step):**
+- Consistent environment across machines
+- Easy deployment/restart
+- Volume mounts for state files (thresholds.json, last_review.json)
+- Secrets management for API keys
+
+**Considerations:**
+- Claude CLI invocation requires auth tokens - may need to switch to direct Anthropic SDK calls
+- Health check endpoint for monitoring
+- Log shipping to external service
+
+**Kubernetes:** Overkill for single monitor process unless HA required.
+
+#### Overnight/Weekend News Monitoring (Planned)
+- Pre-market "morning brief" generation
+- Flag positions with material news before market open
+- News sentiment analysis during off-hours
+- Trade plan ready at 6:30 AM instead of scrambling
+
+## 🤖 Autonomous Execution Monitor
+
+The `execution_monitor.py` runs continuously, monitoring positions and triggering automated reviews.
+
+### Currently Used in Autonomous Reviews
+| Tool | Purpose |
+|------|---------|
+| `get_portfolio` | Current positions and P&L |
+| `get_technicals` | RSI, MACD, SMA signals per position |
+| `get_sentiment` | News sentiment for positions |
+| `get_macro_regime` | VIX, yield curve, market regime |
+| `get_correlation` | Portfolio diversification analysis |
+| `get_sectors` | Sector concentration risk checks |
+
+### Available but NOT YET Integrated
+| Tool | Purpose | Priority |
+|------|---------|----------|
+| `congressional_trades_aggregate` | Insider trading patterns | HIGH (requires API subscription) |
+| `get_analyst_ratings` | Consensus for opportunity scanning | LOW |
+| `calculate_valuation` | P/E, PEG for new positions | LOW |
+
+### Monitor Intervals
+- **Position checks:** Every 5 minutes during market hours (configurable)
+- **Scheduled reviews:** Every 4 hours (6:30 AM, 10:30 AM, 2:30 PM PT)
+- **VIX alerts:** On regime change (NORMAL → ELEVATED → HIGH)
+
+### Configuration Files
+- `thresholds.json` - Stop-losses, profit protection levels (hot-reloaded)
+- `last_review.json` - Scheduled review timing
+- `skills/strategy-review.md` - Decision framework for autonomous reviews
+
 ## 🚀 Deployment
 
 ### Phased Rollout (Recommended)
