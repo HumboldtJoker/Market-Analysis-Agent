@@ -377,6 +377,12 @@ agent.tools.register(Tool(
 - [ ] Multi-timeframe strategy testing
 - [ ] Performance attribution analysis
 
+### Tech Debt (For Later Cleanup)
+- [ ] Move `__main__` test blocks from production files to separate test files
+  - `autoinvestor_api.py`, `order_executor.py`, `risk_manager.py`
+- [ ] Remove or deprecate unused `trading_instructions.py` system (artifact from earlier design)
+- [ ] Consolidate duplicate convenience aliases in `autoinvestor_api.py`
+
 ### Phase 4: Production Hardening (Planned)
 
 #### Memory & Context Management
