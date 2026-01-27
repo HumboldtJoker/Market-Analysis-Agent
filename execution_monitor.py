@@ -54,9 +54,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Token usage tracking
-token_log_path = Path('token_usage.log')
-
 # VIX log path
 VIX_LOG_PATH = Path('vix_log.json')
 
@@ -116,12 +113,18 @@ class ExecutionMonitor:
         # Profit protection thresholds (trailing stops to lock in gains)
         self.profit_protection = {}
 
+        # Dip-buying config (loaded from thresholds.json)
+        self.dip_buying_enabled = False
+        self.dip_buying_tickers = []
+
+        # High-beta positions for defensive trimming (loaded from thresholds.json)
+        self.high_beta_positions = {}
+
         # Load thresholds from config file
         self._load_thresholds()
 
         # Track actions
         self.check_count = 0
-        self.tokens_used = 0
 
         # VIX monitoring state
         self.vix_enabled = STRATEGY_TRIGGER_AVAILABLE
@@ -425,18 +428,19 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             logger.error(f"[STRATEGY AGENT] Error invoking Claude: {e}", exc_info=True)
 
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
-        """Check for dip-buying opportunities on STRONG BUY stocks"""
+        """Check for dip-buying opportunities on configured tickers"""
         actions = []
 
-        # Approved STRONG BUY tickers from strategy
-        strong_buy_tickers = ['NVDA', 'SOFI', 'SNAP']
+        # Skip if dip-buying disabled or no tickers configured
+        if not self.dip_buying_enabled or not self.dip_buying_tickers:
+            return actions
 
         portfolio = self.executor.get_portfolio_summary()
         cash = portfolio['cash']
 
         for pos in positions:
             ticker = pos['ticker']
-            if ticker not in strong_buy_tickers:
+            if ticker not in self.dip_buying_tickers:
                 continue
 
             if ticker not in current_prices:
@@ -520,6 +524,18 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 self.profit_protection = config['profit_protection']
                 if self.thresholds_mtime is not None:
                     logger.info(f"[HOT RELOAD] Updated profit protection: {list(self.profit_protection.keys())}")
+
+            # Update dip-buying config
+            if 'dip_buying' in config:
+                dip_config = config['dip_buying']
+                self.dip_buying_enabled = dip_config.get('enabled', False)
+                self.dip_buying_tickers = dip_config.get('tickers', [])
+                self.dip_buy_min = dip_config.get('min_dip_pct', 0.05)
+                self.dip_buy_max = dip_config.get('max_dip_pct', 0.10)
+
+            # Update high-beta positions for defensive actions
+            if 'high_beta_positions' in config:
+                self.high_beta_positions = config['high_beta_positions'].get('positions', {})
 
             self.thresholds_mtime = current_mtime
             return True
@@ -883,23 +899,15 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             logger.info("[AUTONOMOUS DEFENSE] Disabled - skipping defensive actions")
             return
 
-        logger.info("")
-        logger.info("=" * 70)
+        # Skip if no high-beta positions configured
+        if not self.high_beta_positions:
+            logger.info("[AUTONOMOUS DEFENSE] No high-beta positions configured - skipping")
+            return
+
         logger.info(f"[AUTONOMOUS DEFENSE] VIX REGIME: {vix_regime}")
-        logger.info("=" * 70)
 
         portfolio = self.executor.get_portfolio_summary()
         positions = portfolio['positions']
-
-        # Define extreme beta positions based on known analysis
-        # SOFI: beta 2.48, NVDA: beta 1.93, SNAP: beta 1.70, AAPL: beta 1.30
-        high_beta_positions = {
-            'SOFI': {'beta': 2.48, 'extreme': True},   # Extreme risk
-            'NVDA': {'beta': 1.93, 'extreme': False},  # High but acceptable
-            'SNAP': {'beta': 1.70, 'extreme': False},  # High but acceptable
-            'AAPL': {'beta': 1.30, 'extreme': False}   # Moderate
-        }
-
         actions_taken = []
 
         # ELEVATED regime (VIX 20-30): Trim extreme beta positions
@@ -908,10 +916,10 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
 
             for pos in positions:
                 ticker = pos['ticker']
-                if ticker not in high_beta_positions:
+                if ticker not in self.high_beta_positions:
                     continue
 
-                beta_info = high_beta_positions[ticker]
+                beta_info = self.high_beta_positions[ticker]
 
                 # Trim 50% of extreme beta positions (beta >2.0)
                 if beta_info['extreme'] and beta_info['beta'] > 2.0:
@@ -950,10 +958,10 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
 
             for pos in positions:
                 ticker = pos['ticker']
-                if ticker not in high_beta_positions:
+                if ticker not in self.high_beta_positions:
                     continue
 
-                beta_info = high_beta_positions[ticker]
+                beta_info = self.high_beta_positions[ticker]
 
                 # Exit entire extreme beta positions
                 if beta_info['extreme'] and beta_info['beta'] > 2.0:
@@ -1115,12 +1123,6 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 logger.info(f"Cash: ${updated_portfolio['cash']:.2f}")
                 logger.info(f"P&L: ${updated_portfolio['total_unrealized_pl']:.2f} ({updated_portfolio['total_return']:.2f}%)")
 
-                # Log token usage (placeholder - would track actual API calls)
-                estimated_tokens = 850  # Estimate for price checks
-                self.tokens_used += estimated_tokens
-                cost = estimated_tokens * 0.000003  # $0.003 per 1k tokens
-                logger.info(f"Tokens Used This Check: ~{estimated_tokens} | Cost: ~${cost:.4f}")
-
                 # Sleep until next check
                 logger.info(f"\nNext check in {self.check_interval // 60} minutes...")
                 time.sleep(self.check_interval)
@@ -1135,34 +1137,12 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
 
         # Final summary
         logger.info("")
-        logger.info("=" * 70)
-        logger.info("MONITORING SESSION COMPLETE")
-        logger.info(f"Total Checks: {self.check_count}")
-        logger.info(f"Total Tokens: ~{self.tokens_used}")
-        logger.info(f"Total Cost: ~${self.tokens_used * 0.000003:.4f}")
-        logger.info("=" * 70)
+        logger.info(f"MONITORING SESSION COMPLETE - {self.check_count} checks")
 
 
 def main():
     """Entry point for execution monitor"""
-    print("""
-    ============================================================
-            AutoInvestor Execution Monitor v1.0
-            Autonomous Trading Execution System
-    ============================================================
-
-    Mode: Paper Trading (Testing)
-    Check Interval: 5 minutes
-    Stop-Loss: -20% (aggressive)
-
-    This monitor will:
-    - Execute stop-losses automatically
-    - Implement dip-buying on STRONG BUY stocks
-    - Rebalance positions
-    - Report all actions to execution_log.md
-
-    Press Ctrl+C to stop monitoring
-    """)
+    print("AutoInvestor Execution Monitor - Press Ctrl+C to stop")
 
     # Initialize and start monitoring (mode="alpaca" uses Alpaca API, paper vs live per ALPACA_PAPER env)
     monitor = ExecutionMonitor(mode="alpaca", check_interval_seconds=300)
