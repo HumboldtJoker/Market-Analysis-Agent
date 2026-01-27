@@ -51,11 +51,61 @@ portfolio = get_portfolio(mode='alpaca')
 # Get macro conditions
 macro = get_macro_regime()
 
-# Get technicals for each position
+# Get technicals and sentiment for each position
 for pos in portfolio['positions']:
     tech = get_technicals(pos['ticker'])
     sent = get_sentiment(pos['ticker'])
 ```
+
+### Step 2b: Portfolio Health Check (Always Run)
+
+Check diversification and sector concentration before making changes:
+
+```python
+from autoinvestor_api import get_correlation, get_sectors
+
+# Get current position tickers
+tickers = [p['ticker'] for p in portfolio['positions']]
+
+# Check correlation/diversification
+correlation = get_correlation(tickers)
+print(f"Diversification: {correlation['assessment']} (score: {correlation['diversification_score']}/100)")
+print(f"Avg correlation: {correlation['avg_correlation']:.2f}")
+if correlation['high_correlation_pairs']:
+    print(f"Warning - highly correlated pairs: {correlation['high_correlation_pairs']}")
+
+# Check sector concentration
+sectors = get_sectors(tickers)
+print(f"Sector diversity: {sectors['assessment']}")
+print(f"Largest sector: {sectors['largest_sector']} ({sectors['largest_sector_pct']:.1f}%)")
+if sectors['concentration_risks']:
+    print(f"Warning - concentration risks: {sectors['concentration_risks']}")
+```
+
+### Step 2c: Pre-Trade Correlation Check (Before Adding Positions)
+
+Before adding a new position, check if it increases correlation risk:
+
+```python
+# Check correlation if we add a candidate ticker
+candidate = 'NVDA'
+test_tickers = tickers + [candidate]
+new_correlation = get_correlation(test_tickers)
+
+if new_correlation['avg_correlation'] > correlation['avg_correlation'] + 0.1:
+    print(f"Warning: Adding {candidate} increases avg correlation significantly")
+    # Consider finding a less correlated alternative
+
+# Check if it worsens sector concentration
+new_sectors = get_sectors(test_tickers)
+if new_sectors['largest_sector_pct'] > 40:
+    print(f"Warning: Adding {candidate} would create >40% {new_sectors['largest_sector']} concentration")
+```
+
+**Decision Rule:** Avoid adding positions that would:
+- Push avg correlation above 0.6
+- Create >40% concentration in any sector
+- Add a ticker highly correlated (>0.8) with existing large position
 
 ### Step 3: Apply Trading Strategy Rules
 
@@ -74,6 +124,13 @@ Reference `trading_strategy.md` for decision rules:
 - Max single position: 35% of portfolio
 - Prefer adding to existing winners over new positions
 - Check RSI - avoid adding to overbought (RSI > 80)
+
+**Capital Management (CRITICAL):**
+- **Opportunity Reserve:** Maintain 15% cash reserve at all times
+- **Margin Policy:** Minimize margin usage - max 10% of portfolio
+- **Margin Clearing:** When on margin, prioritize clearing it before new positions
+- **If cash < 0:** DO NOT add new positions unless exceptional opportunity
+- **Priority when profitable:** First clear margin, then build reserve, then new positions
 
 **Redeployment Priority:**
 1. Add to existing positions with STRONG BUY signal and healthy RSI (<70)
@@ -127,20 +184,49 @@ Also append to `trading_strategy.md` with a brief summary of the review.
 
 ### For Profit Protection Redeployment:
 1. How much proceeds available?
-2. Which current positions have STRONG BUY + RSI < 70?
-3. Add to healthiest existing position
-4. If all overbought, hold cash or scan for new STRONG BUY candidates
+2. Run portfolio health check (correlation + sectors)
+3. Which current positions have STRONG BUY + RSI < 70?
+4. Before adding: check if it worsens correlation/concentration
+5. Add to healthiest existing position that passes checks
+6. If all overbought or would worsen concentration, hold cash
 
 ### For Scheduled Review:
-1. Any position hit stop-loss? (should auto-execute)
-2. Any position extremely overbought (RSI > 85)? Consider profit protection
-3. Any position deteriorating (signal downgrade)? Consider tighter stop
-4. Macro regime change? Adjust defensive posture
+1. Run portfolio health check (correlation + sectors)
+2. Any concentration risk >40%? Consider trimming largest sector
+3. Any position hit stop-loss? (should auto-execute)
+4. Any position extremely overbought (RSI > 85)? Consider profit protection
+5. Any position deteriorating (signal downgrade)? Consider tighter stop
+6. High correlation pairs? Consider reducing one of the pair
+7. Macro regime change? Adjust defensive posture
 
 ### For VIX Alert:
 1. If ELEVATED: Tighten stops to -15%, avoid new buys
 2. If HIGH: Tighten stops to -10%, consider trimming high-beta
 3. If NORMAL (from elevated): Resume normal operations
+
+### Portfolio Health Thresholds:
+
+**NOTE: This is an AI-FOCUSED AGGRESSIVE strategy. Tech/AI concentration is BY DESIGN.**
+
+Sector concentration warnings in Tech/Communication Services are EXPECTED and ACCEPTABLE.
+The goal is to ride the AI bubble aggressively, not to diversify out of it.
+
+**What we DO care about:**
+- **Avg correlation >0.75:** Too much overlap WITHIN the AI theme - find different AI plays
+- **High-corr pair (>0.85):** Two positions moving identically - trim one, redeploy to different AI angle
+- **Single position >35%:** Too much single-stock risk (diversify within AI, not away from it)
+
+**What we DON'T worry about:**
+- Tech sector >50% - this is intentional
+- Communication Services heavy - GOOGL/META are AI plays
+- Low sector count - we're focused on AI ecosystem
+
+**AI-Adjacent Opportunities to Consider:**
+- Datacenter infrastructure (construction, REITs, power)
+- AI-heavy venture capital / hedge funds
+- Cloud providers and enterprise AI
+- Semiconductor equipment and materials
+- AI application companies (not just chips)
 
 ## Output Requirements
 

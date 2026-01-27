@@ -143,10 +143,27 @@ class ExecutionMonitor:
             logger.info("VIX Monitoring enabled - alerts will trigger Strategy Agent reviews")
 
         # Scheduled strategic reviews (proactive checks beyond VIX alerts)
-        self.review_interval_hours = 4  # Every 4 hours during market hours
+        # Intervals loaded from config in _load_thresholds()
+        self.review_interval_hours = 1  # Default: hourly (overridden by config)
         self.last_scheduled_review = None
         self._load_last_review_time()
-        logger.info(f"Scheduled strategic reviews every {self.review_interval_hours} hours")
+
+        # Opportunity discovery (separate from position review)
+        self.discovery_interval_hours = 4  # Default: every 4 hours (overridden by config)
+        self.discovery_start_time = "06:29"  # Default: 6:29 AM PT
+        self.last_discovery = None
+        self._load_last_discovery_time()
+
+        # Capital management rules (loaded from config)
+        self.opportunity_reserve_pct = 0.15
+        self.max_margin_pct = 0.10
+
+        # Watchlist for opportunity scanning
+        self.scan_universe = []
+        self.watchlist_candidates = {}
+
+        logger.info(f"Strategy reviews every {self.review_interval_hours} hour(s)")
+        logger.info(f"Opportunity discovery every {self.discovery_interval_hours} hours starting {self.discovery_start_time}")
 
         # Load VIX history
         self._load_vix_history()
@@ -324,7 +341,7 @@ class ExecutionMonitor:
         except Exception as e:
             logger.error(f"Error triggering profit protection review: {e}", exc_info=True)
 
-    def _invoke_strategy_agent(self, trigger_type: str, context: str = ""):
+    def _invoke_strategy_agent(self, trigger_type: str, context: str = "", prompt_override: str = None):
         """
         Invoke Claude Code CLI to process a strategy review autonomously.
 
@@ -332,16 +349,25 @@ class ExecutionMonitor:
         without requiring user interaction.
         """
         try:
+            # Use prompt override if provided (for discovery scans)
+            if prompt_override:
+                prompt = prompt_override
             # Build the prompt based on trigger type
-            if trigger_type == 'profit_protection':
+            elif trigger_type == 'profit_protection':
                 prompt = f"""A profit protection sell was triggered for {context}.
 Run /strategy-review to analyze the portfolio and redeploy the proceeds.
 Check portfolio correlation and sector concentration before adding positions.
 Execute trades as recommended by the strategy review skill."""
             elif trigger_type == 'scheduled':
-                prompt = """A scheduled 4-hour strategy review is due.
+                prompt = f"""A scheduled strategy review is due (runs every {self.review_interval_hours} hour(s)).
 Run /strategy-review to scan for opportunities and adjust positions as needed.
 Check portfolio_health in scheduled_review_needed.json for correlation and sector data.
+Also check the watchlist in thresholds.json for entry opportunities.
+
+Capital rules:
+- Maintain {self.opportunity_reserve_pct * 100:.0f}% opportunity reserve
+- Max margin: {self.max_margin_pct * 100:.0f}% - clear margin ASAP when positions profit
+
 Address any concentration risks or high-correlation pairs flagged in the alert."""
             elif trigger_type == 'vix_alert':
                 prompt = f"""VIX regime changed: {context}
@@ -537,6 +563,28 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             if 'high_beta_positions' in config:
                 self.high_beta_positions = config['high_beta_positions'].get('positions', {})
 
+            # Update review intervals
+            if 'review_intervals' in config:
+                intervals = config['review_intervals']
+                old_review = self.review_interval_hours
+                self.review_interval_hours = intervals.get('strategy_review_hours', 1)
+                self.discovery_interval_hours = intervals.get('discovery_interval_hours', 4)
+                self.discovery_start_time = intervals.get('discovery_start_time', '06:29')
+                if self.thresholds_mtime is not None and old_review != self.review_interval_hours:
+                    logger.info(f"[HOT RELOAD] Strategy review interval: {self.review_interval_hours}h")
+
+            # Update capital management rules
+            if 'capital_management' in config:
+                cap_mgmt = config['capital_management']
+                self.opportunity_reserve_pct = cap_mgmt.get('opportunity_reserve_pct', 0.15)
+                self.max_margin_pct = cap_mgmt.get('max_margin_pct', 0.10)
+
+            # Update watchlist and scan universe
+            if 'watchlist' in config:
+                watchlist = config['watchlist']
+                self.scan_universe = watchlist.get('scan_universe', [])
+                self.watchlist_candidates = watchlist.get('candidates', {})
+
             self.thresholds_mtime = current_mtime
             return True
 
@@ -720,7 +768,7 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                     self.last_scheduled_review = datetime.fromisoformat(data['timestamp'])
                     logger.info(f"Last scheduled review: {self.last_scheduled_review.strftime('%Y-%m-%d %H:%M')}")
             else:
-                logger.info("No previous scheduled review found - will trigger first review in 4 hours")
+                logger.info("No previous scheduled review found - will trigger on first check")
         except Exception as e:
             logger.warning(f"Could not load last review time: {e}")
 
@@ -735,6 +783,32 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 }, f, indent=2)
         except Exception as e:
             logger.error(f"Could not save review time: {e}")
+
+    def _load_last_discovery_time(self):
+        """Load timestamp of last opportunity discovery"""
+        discovery_file = 'last_discovery.json'
+        try:
+            if Path(discovery_file).exists():
+                with open(discovery_file, 'r') as f:
+                    data = json.load(f)
+                    self.last_discovery = datetime.fromisoformat(data['timestamp'])
+                    logger.info(f"Last discovery scan: {self.last_discovery.strftime('%Y-%m-%d %H:%M')}")
+            else:
+                logger.info("No previous discovery scan found")
+        except Exception as e:
+            logger.warning(f"Could not load last discovery time: {e}")
+
+    def _save_last_discovery_time(self):
+        """Save timestamp of completed discovery scan"""
+        discovery_file = 'last_discovery.json'
+        try:
+            with open(discovery_file, 'w') as f:
+                json.dump({
+                    'timestamp': datetime.now().isoformat(),
+                    'scan_type': 'opportunity_discovery'
+                }, f, indent=2)
+        except Exception as e:
+            logger.error(f"Could not save discovery time: {e}")
 
     def check_if_review_due(self) -> bool:
         """
@@ -761,6 +835,44 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
 
         if 0 < mins_to_close <= 30 and hours_until_next_review * 60 > mins_to_close:
             logger.info(f"[END-OF-DAY REVIEW] Triggering early - next review would be after close")
+            return True
+
+        return False
+
+    def check_if_discovery_due(self) -> bool:
+        """
+        Check if opportunity discovery scan is due
+
+        Discovery runs on a separate (longer) interval than strategy reviews,
+        starting at a configured time (default 6:29 AM PT for fresh pre-market news).
+
+        Returns:
+            True if discovery needed, False otherwise
+        """
+        now = datetime.now(self.eastern_tz)
+
+        # Parse discovery start time
+        try:
+            start_hour, start_min = map(int, self.discovery_start_time.split(':'))
+        except:
+            start_hour, start_min = 6, 29
+
+        # Check if we're past today's first discovery window
+        discovery_start = now.replace(hour=start_hour + 3, minute=start_min, second=0, microsecond=0)  # +3 for PT->ET
+
+        if self.last_discovery is None:
+            # No previous discovery - trigger if we're in a valid window
+            # Check if current time aligns with discovery interval
+            current_hour_et = now.hour
+            hours_from_start = (current_hour_et - (start_hour + 3)) % 24
+            if hours_from_start % self.discovery_interval_hours == 0:
+                return True
+            return False
+
+        hours_since_discovery = (now.replace(tzinfo=None) - self.last_discovery).total_seconds() / 3600
+
+        # Has discovery interval elapsed?
+        if hours_since_discovery >= self.discovery_interval_hours:
             return True
 
         return False
@@ -856,6 +968,86 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
 
         except Exception as e:
             logger.error(f"Error triggering scheduled review: {e}", exc_info=True)
+
+    def trigger_discovery(self):
+        """
+        Trigger opportunity discovery scan
+
+        Separate from strategy review - this scans the broader AI ecosystem
+        for emerging opportunities, not just current positions. Runs less
+        frequently (every 4 hours) and updates the watchlist.
+        """
+        try:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("[OPPORTUNITY DISCOVERY] SCANNING AI ECOSYSTEM")
+            logger.info("=" * 70)
+
+            if not self.scan_universe:
+                logger.warning("No scan_universe configured in thresholds.json - skipping discovery")
+                return
+
+            # Get current portfolio for context
+            portfolio = self.executor.get_portfolio_summary()
+            current_holdings = [p['ticker'] for p in portfolio.get('positions', [])]
+
+            # Build discovery prompt
+            prompt = f"""Run an opportunity discovery scan for the AI ecosystem.
+
+## Your Mission
+Scan these tickers for STRONG BUY opportunities: {', '.join(self.scan_universe)}
+
+Current holdings (already own): {', '.join(current_holdings)}
+
+## Capital Constraints
+- Cash available: ${portfolio.get('cash', 0):,.2f}
+- {'ON MARGIN - prioritize clearing before new positions' if portfolio.get('cash', 0) < 0 else 'Cash available for new positions'}
+- Opportunity reserve target: {self.opportunity_reserve_pct * 100:.0f}% of portfolio
+
+## Analysis Required
+For each ticker in scan_universe:
+1. Get current technicals (RSI, MACD, SMA trends)
+2. Check if STRONG BUY signal
+3. If promising, note entry criteria
+
+## Output Required
+Update the watchlist with top opportunities:
+- Ticker, signal strength, target entry price, reasoning
+- Rank by conviction
+- Note which current holdings to potentially trim to fund new positions
+
+Focus on finding the BEST opportunities in the AI ecosystem right now.
+"""
+
+            # Write discovery alert
+            alert = {
+                'timestamp': datetime.now().isoformat(),
+                'alert_type': 'OPPORTUNITY_DISCOVERY',
+                'scan_universe': self.scan_universe,
+                'current_holdings': current_holdings,
+                'portfolio_cash': portfolio.get('cash', 0),
+                'on_margin': portfolio.get('cash', 0) < 0,
+                'status': 'pending'
+            }
+
+            alert_file = 'discovery_needed.json'
+            with open(alert_file, 'w') as f:
+                json.dump(alert, f, indent=2)
+
+            logger.info(f"Scanning {len(self.scan_universe)} tickers")
+            logger.info(f"Current holdings: {', '.join(current_holdings)}")
+            logger.info(f"Alert written to: {alert_file}")
+            logger.info("=" * 70)
+
+            # Update last discovery time
+            self.last_discovery = datetime.now()
+            self._save_last_discovery_time()
+
+            # Invoke Claude for discovery scan
+            self._invoke_strategy_agent('discovery', prompt_override=prompt)
+
+        except Exception as e:
+            logger.error(f"Error triggering discovery: {e}", exc_info=True)
 
     def get_stop_loss_for_position(self, ticker: str, vix_regime: str = None) -> float:
         """
@@ -1066,9 +1258,13 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                     self.previous_vix = vix_level
                     self.previous_vix_regime = vix_regime
 
-                # Check if scheduled review is due (proactive checks every 4 hours)
+                # Check if scheduled review is due (proactive position checks)
                 if self.check_if_review_due():
                     self.trigger_scheduled_review()
+
+                # Check if opportunity discovery is due (broader market scan)
+                if self.check_if_discovery_due():
+                    self.trigger_discovery()
 
                 # Display current status
                 logger.info("\nCurrent Positions:")
