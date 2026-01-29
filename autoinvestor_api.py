@@ -248,7 +248,11 @@ def execute_order(ticker: str, action: str, quantity: float,
 
     Args:
         ticker: Stock symbol
-        action: 'BUY' or 'SELL'
+        action: Trade action:
+            - 'BUY': Open or add to long position
+            - 'SELL': Close or reduce long position
+            - 'SHORT': Open or add to short position (sell borrowed shares)
+            - 'COVER': Close or reduce short position (buy back shares)
         quantity: Number of shares
         order_type: 'market' or 'limit' (default: 'market')
         mode: 'local' or 'alpaca' (default: 'local' for safety)
@@ -259,6 +263,7 @@ def execute_order(ticker: str, action: str, quantity: float,
     Note:
         Defaults to local (simulated) mode for safety. Use mode='alpaca'
         explicitly for real trading (paper vs live determined by ALPACA_PAPER env var).
+        SHORT requires margin account with appropriate permissions.
     """
     try:
         executor = OrderExecutor(mode=mode)

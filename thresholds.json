@@ -1,4 +1,15 @@
 {
+  "strategy_focus": {
+    "theme": "AI Bubble - Aggressive",
+    "description": "Ride the AI wave aggressively. Tech concentration is BY DESIGN.",
+    "acceptable_sectors": ["Technology", "Communication Services", "Financials"],
+    "ai_adjacent_targets": [
+      "Datacenter infrastructure (construction, REITs, power)",
+      "AI-heavy VC/hedge funds",
+      "Cloud providers and enterprise AI",
+      "Semiconductor equipment and materials"
+    ]
+  },
   "position_stop_losses": {
     "MSFT": {
       "threshold": 0.03,
@@ -14,11 +25,27 @@
       "added": "2026-01-22"
     },
     "MU": {
-      "min_price": 360.0,
-      "reason": "Lock in gains - RSI 78 overbought, +43% above SMA50, very extended",
+      "min_price": 405.0,
+      "reason": "BREAKING 52-week highs ($416.45) - tightened to $405 to lock +22% minimum, STRONG BUY technicals support continuation",
       "trigger_review": true,
-      "added": "2026-01-23"
+      "added": "2026-01-23",
+      "updated": "2026-01-27T11:33"
+    },
+    "AMD": {
+      "min_price": 248.0,
+      "reason": "Tightened - lock in +8.8% gain, buy dip if triggered",
+      "trigger_review": true,
+      "added": "2026-01-26"
     }
+  },
+  "correlation_thresholds": {
+    "max_avg_correlation": 0.75,
+    "max_pair_correlation": 0.85,
+    "notes": "Higher thresholds - AI stocks naturally correlate"
+  },
+  "position_limits": {
+    "max_single_position_pct": 35,
+    "notes": "Diversify WITHIN AI theme, not away from it"
   },
   "default_stop_loss": 0.2,
   "vix_stop_losses": {
@@ -27,5 +54,122 @@
     "ELEVATED": 0.15,
     "HIGH": 0.1
   },
-  "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle (5 min)"
+  "dip_buying": {
+    "enabled": false,
+    "tickers": [],
+    "min_dip_pct": 0.05,
+    "max_dip_pct": 0.10,
+    "notes": "Enable and add STRONG BUY tickers to auto-buy dips"
+  },
+  "high_beta_positions": {
+    "notes": "Positions with extreme beta that get trimmed in ELEVATED/HIGH VIX regimes",
+    "positions": {}
+  },
+  "capital_management": {
+    "opportunity_reserve_pct": 0.15,
+    "max_margin_pct": 0.10,
+    "margin_clear_priority": "HIGH",
+    "notes": "Maintain 15% cash reserve. Minimize margin - clear ASAP when positions profit."
+  },
+  "review_intervals": {
+    "strategy_review_hours": 1,
+    "discovery_interval_hours": 4,
+    "discovery_start_time": "06:29",
+    "notes": "Strategy reviews hourly. Opportunity discovery every 4 hours starting 6:29 AM PT."
+  },
+  "watchlist": {
+    "candidates": {},
+    "scan_universe": [
+      "NVDA", "AVGO", "MRVL", "QCOM", "INTC",
+      "SMCI", "DELL", "HPE",
+      "ARM", "SNPS", "CDNS", "ASML", "LRCX", "AMAT", "KLAC",
+      "PLTR", "SNOW", "CRWD", "PANW", "ZS",
+      "MSFT", "AMZN", "ORCL", "CRM", "NOW",
+      "PATH", "AI", "UPST", "S"
+    ],
+    "notes": "AI ecosystem: chips, servers, equipment, cybersecurity, cloud, applications"
+  },
+  "short_selling": {
+    "enabled": true,
+    "margin_requirement_pct": 0.50,
+    "max_short_exposure_pct": 0.20,
+    "test_mode": {
+      "enabled": true,
+      "test_allocation_usd": 2500,
+      "purpose": "Test short-selling mechanics and reasoning architecture",
+      "notes": "Small allocation for learning. Churn positions to validate system. Losses here are tuition."
+    },
+    "sector_scan": {
+      "enabled": true,
+      "bearish_sectors": [
+        "Traditional Retail (non-Amazon resistant)",
+        "Legacy Media (cable, broadcast)",
+        "Commercial Real Estate / Office REITs",
+        "Fossil Fuel (coal, offshore drilling)",
+        "Legacy Automotive (non-EV pure plays)"
+      ],
+      "scan_criteria": [
+        "Below 200-day SMA",
+        "RSI < 40 (weak momentum)",
+        "Bearish MACD crossover",
+        "Declining revenue YoY",
+        "High debt / weak balance sheet"
+      ],
+      "example_tickers": ["M", "GPS", "VFC", "SLB", "OXY", "MPW", "PARA", "WBD"],
+      "notes": "Agent should identify 2-3 candidates from struggling sectors, not fight strong trends"
+    },
+    "rules": {
+      "max_position_size_usd": 1000,
+      "stop_loss_pct": 0.10,
+      "take_profit_pct": 0.15,
+      "max_hold_days": 10,
+      "notes": "Small positions, tight stops, quick profits. This is practice, not alpha generation."
+    },
+    "notes": "ACTIVE: Agent should evaluate short opportunities each review. Test the system with small stakes in clearly weak sectors."
+  },
+  "options_trading": {
+    "enabled": true,
+    "mcp_server": "alpaca-options",
+    "max_options_allocation_pct": 0.10,
+    "preferred_strategies": [
+      "protective_puts",
+      "covered_calls",
+      "bull_call_spreads"
+    ],
+    "avoid_strategies": [
+      "naked_calls",
+      "naked_puts"
+    ],
+    "max_days_to_expiry": 45,
+    "min_days_to_expiry": 7,
+    "notes": "Options via alpaca-options MCP server. Conservative strategies only. No naked options."
+  },
+  "fallback_rules": {
+    "enabled": true,
+    "rsi_profit_taking": {
+      "rsi_threshold": 80,
+      "min_profit_pct": 20,
+      "trim_pct": 0.25,
+      "notes": "Trim 25% when RSI > 80 and profit > 20%"
+    },
+    "extreme_overbought": {
+      "rsi_threshold": 85,
+      "min_profit_pct": 30,
+      "trim_pct": 0.30,
+      "notes": "Trim 30% when RSI > 85 and profit > 30%"
+    },
+    "position_size_limit": {
+      "max_position_pct": 35,
+      "target_position_pct": 30,
+      "notes": "Trim positions exceeding 35% to 30%"
+    },
+    "cash_reserve_floor": {
+      "min_cash_pct": 8,
+      "min_profit_to_trim": 25,
+      "trim_pct": 0.15,
+      "notes": "If cash < 8%, trim best performer (if >25% gain) by 15%"
+    },
+    "notes": "Deterministic rules executed when Claude API unavailable. Provides basic portfolio protection."
+  },
+  "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle"
 }

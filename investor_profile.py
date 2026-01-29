@@ -171,17 +171,17 @@ IMPORTANT: Tailor your analysis and recommendations to match this investor's pro
         """Save profile to JSON file"""
         with open(filename, 'w') as f:
             json.dump(self.profile, f, indent=2)
-        print(f"\n✓ Profile saved to {filename}")
+        print(f"\n[OK] Profile saved to {filename}")
 
     def load_from_file(self, filename: str = "investor_profile.json") -> Dict:
         """Load profile from JSON file"""
         try:
             with open(filename, 'r') as f:
                 self.profile = json.load(f)
-            print(f"\n✓ Profile loaded from {filename}")
+            print(f"\n[OK] Profile loaded from {filename}")
             return self.profile
         except FileNotFoundError:
-            print(f"\n✗ Profile file {filename} not found")
+            print(f"\n[ERROR] Profile file {filename} not found")
             return {}
 
 

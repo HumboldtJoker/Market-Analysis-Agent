@@ -122,7 +122,7 @@ class PortfolioManager:
 
         Args:
             ticker: Stock symbol
-            action: 'BUY' or 'SELL'
+            action: 'BUY', 'SELL', 'SHORT', or 'COVER'
             quantity: Number of shares (fractional shares supported)
             price: Price per share
             commission: Trading commission (default 0 for Alpaca)
@@ -132,7 +132,7 @@ class PortfolioManager:
         """
         action = action.upper()
 
-        if action not in ['BUY', 'SELL']:
+        if action not in ['BUY', 'SELL', 'SHORT', 'COVER']:
             raise ValueError(f"Invalid action: {action}")
 
         # Create trade record
@@ -200,6 +200,66 @@ class PortfolioManager:
 
             # Update or remove position
             pos.quantity -= quantity
+            if pos.quantity == 0:
+                del self.positions[ticker]
+
+        elif action == 'SHORT':
+            # Short selling: borrow and sell shares
+            # Receive proceeds from the sale
+            proceeds = (quantity * price) - commission
+            self.cash += proceeds
+
+            # Create or add to short position (negative quantity)
+            if ticker in self.positions:
+                pos = self.positions[ticker]
+                if pos.quantity > 0:
+                    raise ValueError(f"Cannot SHORT {ticker}: have existing long position")
+                # Average down the short
+                new_quantity = pos.quantity - quantity  # More negative
+                # Weighted average of short prices
+                new_avg_cost = (
+                    (abs(pos.quantity) * pos.avg_cost) + (quantity * price)
+                ) / abs(new_quantity)
+                pos.quantity = new_quantity
+                pos.avg_cost = new_avg_cost
+            else:
+                # New short position (negative quantity)
+                self.positions[ticker] = Position(
+                    ticker=ticker,
+                    quantity=-quantity,  # Negative for short
+                    avg_cost=price,      # Price we shorted at
+                    current_price=price
+                )
+
+        elif action == 'COVER':
+            # Cover short: buy back borrowed shares
+            if ticker not in self.positions:
+                raise ValueError(f"No short position in {ticker} to cover")
+
+            pos = self.positions[ticker]
+            if pos.quantity >= 0:
+                raise ValueError(f"Cannot COVER {ticker}: position is long, not short")
+
+            # Check if covering more than shorted
+            if quantity > abs(pos.quantity):
+                raise ValueError(
+                    f"Cannot cover {quantity} shares: only short {abs(pos.quantity)}"
+                )
+
+            # Calculate realized P&L on short
+            # Profit = (short price - cover price) * quantity
+            realized_pl = (pos.avg_cost - price) * quantity
+
+            # Deduct cash to buy back shares
+            cost = (quantity * price) + commission
+            if self.cash < cost:
+                raise ValueError(
+                    f"Insufficient cash to cover: have ${self.cash:.2f}, need ${cost:.2f}"
+                )
+            self.cash -= cost
+
+            # Update or close position
+            pos.quantity += quantity  # Becomes less negative
             if pos.quantity == 0:
                 del self.positions[ticker]
 

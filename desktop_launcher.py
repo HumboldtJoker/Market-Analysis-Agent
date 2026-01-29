@@ -42,7 +42,7 @@ class MarketAnalysisDesktopApp:
         main_frame.rowconfigure(4, weight=1)
 
         # Title
-        title_label = ttk.Label(main_frame, text="🚀 Market Analysis Agent",
+        title_label = ttk.Label(main_frame, text="Market Analysis Agent",
                                font=('Arial', 16, 'bold'))
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
 
@@ -67,7 +67,7 @@ class MarketAnalysisDesktopApp:
         self.query_entry.grid(row=3, column=1, sticky=(tk.W, tk.E), padx=(10, 0), pady=5)
 
         # Analyze Button
-        self.analyze_button = ttk.Button(main_frame, text="🔍 Analyze", command=self.run_analysis)
+        self.analyze_button = ttk.Button(main_frame, text="Analyze", command=self.run_analysis)
         self.analyze_button.grid(row=1, column=2, rowspan=3, padx=(10, 0), pady=5, sticky=(tk.N, tk.S))
 
         # Results Area
@@ -90,7 +90,7 @@ class MarketAnalysisDesktopApp:
 
     def show_welcome_message(self):
         welcome_msg = """
-🚀 Welcome to Market Analysis Agent Desktop Interface!
+Welcome to Market Analysis Agent Desktop Interface!
 
 This tool provides AI-powered investment analysis using real-time market data.
 
@@ -101,17 +101,17 @@ Quick Start:
 4. Click "Analyze" or press Enter
 
 Features:
-✓ Real-time stock prices and financials
-✓ Technical indicators (SMA, RSI, MACD, Bollinger Bands)
-✓ Portfolio correlation analysis
-✓ Macro economic regime detection
-✓ Paper trading integration ready
+- Real-time stock prices and financials
+- Technical indicators (SMA, RSI, MACD, Bollinger Bands)
+- Portfolio correlation analysis
+- Macro economic regime detection
+- Paper trading integration ready
 
 Example Queries:
-• "Should I buy this stock for long-term growth?"
-• "Is this a good entry point for day trading?"
-• "How risky is this investment?"
-• "What's the current market sentiment?"
+- "Should I buy this stock for long-term growth?"
+- "Is this a good entry point for day trading?"
+- "How risky is this investment?"
+- "What's the current market sentiment?"
 
 Ready to analyze! Enter a ticker and click Analyze.
         """
@@ -132,7 +132,7 @@ Ready to analyze! Enter a ticker and click Analyze.
         self.analyze_button.config(state='disabled')
         self.status_var.set(f"Running {analysis_type.lower()}...")
         self.results_text.delete(1.0, tk.END)
-        self.results_text.insert(tk.END, f"🔄 Analyzing {ticker}...\n\n")
+        self.results_text.insert(tk.END, f"Analyzing {ticker}...\n\n")
         self.root.update()
 
         # Run analysis in thread to prevent GUI freezing

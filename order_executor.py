@@ -145,8 +145,9 @@ class OrderExecutor:
         """
         action = action.upper()
 
-        if action not in ['BUY', 'SELL']:
-            raise ValueError(f"Invalid action: {action}")
+        # Valid actions: BUY/SELL for longs, SHORT/COVER for shorts
+        if action not in ['BUY', 'SELL', 'SHORT', 'COVER']:
+            raise ValueError(f"Invalid action: {action}. Use BUY, SELL, SHORT, or COVER")
 
         if quantity <= 0:
             raise ValueError(f"Invalid quantity: {quantity}")
@@ -159,11 +160,13 @@ class OrderExecutor:
         if quantity > 100000:
             raise ValueError(f"Order quantity {quantity} exceeds maximum allowed (100,000 shares)")
 
-        # 2. For SELL: verify we own enough shares
+        # 2. For SELL: verify we own enough shares (long position)
         if action == "SELL":
             position = self.portfolio.get_position(ticker)
             if position is None:
                 raise ValueError(f"Cannot sell {ticker}: no position held")
+            if position.quantity < 0:
+                raise ValueError(f"Cannot SELL {ticker}: position is short. Use COVER to close shorts")
             if quantity > position.quantity:
                 raise ValueError(
                     f"Cannot sell {quantity} shares of {ticker}: only own {position.quantity:.4f} shares"
@@ -179,6 +182,36 @@ class OrderExecutor:
                     f"Insufficient cash for {quantity} shares of {ticker} "
                     f"(~${order_value:,.0f}): only ${available_cash:,.0f} available. "
                     f"Max buy: {max_shares:.2f} shares"
+                )
+
+        # 4. For SHORT: verify margin requirements and no existing long position
+        if action == "SHORT":
+            position = self.portfolio.get_position(ticker)
+            if position is not None and position.quantity > 0:
+                raise ValueError(
+                    f"Cannot SHORT {ticker}: already have long position of {position.quantity:.4f} shares. "
+                    f"SELL the long first, then SHORT."
+                )
+            # Margin requirement: need ~150% of order value as collateral (Reg T)
+            # We check for 50% margin requirement (the borrowed portion)
+            margin_required = order_value * 0.50
+            available_cash = self.portfolio.cash
+            if margin_required > available_cash:
+                raise ValueError(
+                    f"Insufficient margin for shorting {quantity} shares of {ticker}. "
+                    f"Need ${margin_required:,.0f} margin (50%), have ${available_cash:,.0f}"
+                )
+
+        # 5. For COVER: verify we have a short position to close
+        if action == "COVER":
+            position = self.portfolio.get_position(ticker)
+            if position is None:
+                raise ValueError(f"Cannot COVER {ticker}: no position held")
+            if position.quantity >= 0:
+                raise ValueError(f"Cannot COVER {ticker}: position is long, not short. Use SELL instead")
+            if quantity > abs(position.quantity):
+                raise ValueError(
+                    f"Cannot cover {quantity} shares of {ticker}: only short {abs(position.quantity):.4f} shares"
                 )
 
         # 4. Single order size limit: warn if > 25% of portfolio (but allow it)
@@ -203,11 +236,14 @@ class OrderExecutor:
         current_price = self.get_current_price(ticker)
 
         # Determine execution price
+        # BUY/COVER = buying shares, SELL/SHORT = selling shares
+        is_buying = action in ["BUY", "COVER"]
+
         if order_type == "market":
             # Market orders execute at current price
             # Add slippage simulation (0.05% for market orders)
             slippage = 0.0005
-            if action == "BUY":
+            if is_buying:
                 execution_price = current_price * (1 + slippage)
             else:
                 execution_price = current_price * (1 - slippage)
@@ -216,20 +252,20 @@ class OrderExecutor:
                 raise ValueError("Limit price required for limit orders")
 
             # Check if limit order would fill
-            if action == "BUY" and current_price > limit_price:
+            if is_buying and current_price > limit_price:
                 return {
                     "success": False,
                     "status": "rejected",
-                    "reason": f"Limit buy price ${limit_price:.2f} below market ${current_price:.2f}",
+                    "reason": f"Limit {action.lower()} price ${limit_price:.2f} below market ${current_price:.2f}",
                     "ticker": ticker,
                     "action": action,
                     "quantity": quantity
                 }
-            elif action == "SELL" and current_price < limit_price:
+            elif not is_buying and current_price < limit_price:
                 return {
                     "success": False,
                     "status": "rejected",
-                    "reason": f"Limit sell price ${limit_price:.2f} above market ${current_price:.2f}",
+                    "reason": f"Limit {action.lower()} price ${limit_price:.2f} above market ${current_price:.2f}",
                     "ticker": ticker,
                     "action": action,
                     "quantity": quantity
@@ -286,7 +322,8 @@ class OrderExecutor:
 
         try:
             # Prepare order request
-            order_side = OrderSide.BUY if action == "BUY" else OrderSide.SELL
+            # BUY/COVER -> buy shares, SELL/SHORT -> sell shares
+            order_side = OrderSide.BUY if action in ["BUY", "COVER"] else OrderSide.SELL
 
             if order_type == "market":
                 # Market order

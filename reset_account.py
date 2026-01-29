@@ -54,8 +54,8 @@ print(f'  Cash: ${float(account.cash):,.2f}')
 print(f'  Positions: {len(positions)}')
 
 if len(positions) > 0:
-    print('\n⚠️  WARNING: Some positions remain:')
+    print('\n[WARNING] Some positions remain:')
     for pos in positions:
         print(f'  {pos.symbol}: {pos.qty} shares')
 else:
-    print('\n✅ All positions closed successfully')
+    print('\n[OK] All positions closed successfully')

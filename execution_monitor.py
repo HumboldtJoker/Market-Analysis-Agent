@@ -120,7 +120,16 @@ class ExecutionMonitor:
         # High-beta positions for defensive trimming (loaded from thresholds.json)
         self.high_beta_positions = {}
 
-        # Load thresholds from config file
+        # Initialize attributes BEFORE _load_thresholds() (which may override them)
+        self.review_interval_hours = 1  # Default: hourly
+        self.discovery_interval_hours = 4  # Default: every 4 hours
+        self.discovery_start_time = "06:29"  # Default: 6:29 AM PT
+        self.opportunity_reserve_pct = 0.15
+        self.max_margin_pct = 0.10
+        self.scan_universe = []
+        self.watchlist_candidates = {}
+
+        # Load thresholds from config file (overrides defaults above)
         self._load_thresholds()
 
         # Track actions
@@ -142,25 +151,21 @@ class ExecutionMonitor:
         if self.vix_enabled:
             logger.info("VIX Monitoring enabled - alerts will trigger Strategy Agent reviews")
 
-        # Scheduled strategic reviews (proactive checks beyond VIX alerts)
-        # Intervals loaded from config in _load_thresholds()
-        self.review_interval_hours = 1  # Default: hourly (overridden by config)
+        # Load last review/discovery times from state files
         self.last_scheduled_review = None
         self._load_last_review_time()
-
-        # Opportunity discovery (separate from position review)
-        self.discovery_interval_hours = 4  # Default: every 4 hours (overridden by config)
-        self.discovery_start_time = "06:29"  # Default: 6:29 AM PT
         self.last_discovery = None
         self._load_last_discovery_time()
 
-        # Capital management rules (loaded from config)
-        self.opportunity_reserve_pct = 0.15
-        self.max_margin_pct = 0.10
+        # API resilience: retry logic and fallback tracking
+        self.consecutive_api_failures = 0
+        self.last_api_success = None
+        self.max_retries = 3
+        self.retry_delays = [5, 15, 45]  # seconds - exponential backoff
 
-        # Watchlist for opportunity scanning
-        self.scan_universe = []
-        self.watchlist_candidates = {}
+        # Load fallback rules config
+        self.fallback_rules_enabled = True
+        self._load_fallback_rules_config()
 
         logger.info(f"Strategy reviews every {self.review_interval_hours} hour(s)")
         logger.info(f"Opportunity discovery every {self.discovery_interval_hours} hours starting {self.discovery_start_time}")
@@ -216,37 +221,71 @@ class ExecutionMonitor:
             current_price = current_prices[ticker]
             quantity = pos['quantity']
 
+            # Determine if long or short position
+            is_short = quantity < 0
+
             # Get VIX-adaptive stop-loss for this position
             stop_loss_pct = self.get_stop_loss_for_position(ticker, self.previous_vix_regime)
 
-            # Check stop-loss with adaptive threshold
-            should_sell, stop_info = self.risk_manager.check_stop_loss(
-                ticker, entry_price, current_price, stop_loss_pct
-            )
+            if is_short:
+                # SHORT position: stop-loss triggers if price RISES too much
+                # For shorts, profit when price drops, loss when price rises
+                stop_price = entry_price * (1 + stop_loss_pct)
+                loss_pct = ((current_price - entry_price) / entry_price) * 100  # Positive = loss for shorts
+                should_cover = current_price >= stop_price
 
-            if should_sell:
-                logger.warning(f"[ALERT] STOP-LOSS TRIGGERED: {ticker}")
-                logger.info(f"   Entry: ${entry_price:.2f}")
-                logger.info(f"   Current: ${current_price:.2f}")
-                logger.info(f"   Loss: {stop_info['loss_pct']:.2f}%")
+                if should_cover:
+                    logger.warning(f"[ALERT] SHORT STOP-LOSS TRIGGERED: {ticker}")
+                    logger.info(f"   Short Entry: ${entry_price:.2f}")
+                    logger.info(f"   Current: ${current_price:.2f}")
+                    logger.info(f"   Loss: {loss_pct:.2f}%")
 
-                # Execute sell (market order for immediate execution on defensive exits)
-                result = self.executor.execute_order(
-                    ticker=ticker,
-                    action='SELL',
-                    quantity=quantity,
-                    order_type='market'
+                    # Execute cover (buy back shares)
+                    result = self.executor.execute_order(
+                        ticker=ticker,
+                        action='COVER',
+                        quantity=abs(quantity),
+                        order_type='market'
+                    )
+
+                    actions.append({
+                        'type': 'STOP_LOSS_COVER',
+                        'ticker': ticker,
+                        'reason': f"Short stop-loss at +{stop_loss_pct*100:.0f}% (price rose to ${current_price:.2f})",
+                        'quantity': abs(quantity),
+                        'execution': result
+                    })
+
+                    logger.info(f"   Execution: {result['status']}")
+            else:
+                # LONG position: standard stop-loss (price drops)
+                should_sell, stop_info = self.risk_manager.check_stop_loss(
+                    ticker, entry_price, current_price, stop_loss_pct
                 )
 
-                actions.append({
-                    'type': 'STOP_LOSS_SELL',
-                    'ticker': ticker,
-                    'reason': stop_info['reason'],
-                    'quantity': quantity,
-                    'execution': result
-                })
+                if should_sell:
+                    logger.warning(f"[ALERT] STOP-LOSS TRIGGERED: {ticker}")
+                    logger.info(f"   Entry: ${entry_price:.2f}")
+                    logger.info(f"   Current: ${current_price:.2f}")
+                    logger.info(f"   Loss: {stop_info['loss_pct']:.2f}%")
 
-                logger.info(f"   Execution: {result['status']}")
+                    # Execute sell (market order for immediate execution on defensive exits)
+                    result = self.executor.execute_order(
+                        ticker=ticker,
+                        action='SELL',
+                        quantity=quantity,
+                        order_type='market'
+                    )
+
+                    actions.append({
+                        'type': 'STOP_LOSS_SELL',
+                        'ticker': ticker,
+                        'reason': stop_info['reason'],
+                        'quantity': quantity,
+                        'execution': result
+                    })
+
+                    logger.info(f"   Execution: {result['status']}")
 
         return actions
 
@@ -341,25 +380,30 @@ class ExecutionMonitor:
         except Exception as e:
             logger.error(f"Error triggering profit protection review: {e}", exc_info=True)
 
-    def _invoke_strategy_agent(self, trigger_type: str, context: str = "", prompt_override: str = None):
+    def _invoke_strategy_agent(self, trigger_type: str, context: str = "", prompt_override: str = None) -> bool:
         """
         Invoke Claude Code CLI to process a strategy review autonomously.
 
-        This allows the monitor to trigger intelligent redeployment decisions
-        without requiring user interaction.
+        Includes retry logic with exponential backoff for transient API failures.
+        Falls back to rule-based decisions if all retries fail.
+
+        Returns:
+            bool: True if successful, False if all retries failed
         """
-        try:
-            # Use prompt override if provided (for discovery scans)
-            if prompt_override:
-                prompt = prompt_override
-            # Build the prompt based on trigger type
-            elif trigger_type == 'profit_protection':
-                prompt = f"""A profit protection sell was triggered for {context}.
+        import shutil
+        import json as json_module
+
+        # Use prompt override if provided (for discovery scans)
+        if prompt_override:
+            prompt = prompt_override
+        # Build the prompt based on trigger type
+        elif trigger_type == 'profit_protection':
+            prompt = f"""A profit protection sell was triggered for {context}.
 Run /strategy-review to analyze the portfolio and redeploy the proceeds.
 Check portfolio correlation and sector concentration before adding positions.
 Execute trades as recommended by the strategy review skill."""
-            elif trigger_type == 'scheduled':
-                prompt = f"""A scheduled strategy review is due (runs every {self.review_interval_hours} hour(s)).
+        elif trigger_type == 'scheduled':
+            prompt = f"""A scheduled strategy review is due (runs every {self.review_interval_hours} hour(s)).
 Run /strategy-review to scan for opportunities and adjust positions as needed.
 Check portfolio_health in scheduled_review_needed.json for correlation and sector data.
 Also check the watchlist in thresholds.json for entry opportunities.
@@ -368,90 +412,326 @@ Capital rules:
 - Maintain {self.opportunity_reserve_pct * 100:.0f}% opportunity reserve
 - Max margin: {self.max_margin_pct * 100:.0f}% - clear margin ASAP when positions profit
 
+SHORT SELLING (ACTIVE - check thresholds.json short_selling section):
+- Test mode enabled with $2500 allocation for learning
+- Scan bearish_sectors for short candidates (retail, legacy media, office REITs, fossil fuel, legacy auto)
+- Look for: below 200-day SMA, RSI < 40, bearish MACD, declining fundamentals
+- Max $1000 per position, 10% stop-loss, 15% take-profit target
+- Use SHORT action to open, COVER to close
+- This is practice - evaluate at least 2-3 short candidates each review
+
 Address any concentration risks or high-correlation pairs flagged in the alert."""
-            elif trigger_type == 'vix_alert':
-                prompt = f"""VIX regime changed: {context}
+        elif trigger_type == 'vix_alert':
+            prompt = f"""VIX regime changed: {context}
 Run /strategy-review to assess defensive posture and adjust positions if needed.
 Check portfolio correlation - high-correlation positions amplify risk during volatility."""
-            else:
-                prompt = "Run /strategy-review to process the pending alert."
+        else:
+            prompt = "Run /strategy-review to process the pending alert."
 
-            logger.info("")
-            logger.info("=" * 70)
-            logger.info("[INVOKING STRATEGY AGENT] Claude Code CLI")
-            logger.info(f"   Trigger: {trigger_type}")
-            logger.info(f"   Prompt: {prompt[:80]}...")
-            logger.info("=" * 70)
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("[INVOKING STRATEGY AGENT] Claude Code CLI")
+        logger.info(f"   Trigger: {trigger_type}")
+        logger.info(f"   Prompt: {prompt[:80]}...")
+        logger.info("=" * 70)
 
-            # Get project directory for working directory
-            project_dir = Path(__file__).parent
+        # Get project directory for working directory
+        project_dir = Path(__file__).parent
+        claude_path = shutil.which('claude') or 'claude'
 
-            # Invoke Claude Code CLI
-            # -p flag enables print mode (non-interactive, outputs to stdout)
-            # --dangerously-skip-permissions needed for autonomous operation
-            # --output-format json for structured output with cost tracking
-            import shutil
-            import json as json_module
-            claude_path = shutil.which('claude') or 'claude'
+        # Pass environment with auth token
+        env = os.environ.copy()
 
-            # Pass environment with auth token
-            # Supports both CLAUDE_CODE_OAUTH_TOKEN (subscription) and ANTHROPIC_API_KEY (API)
-            env = os.environ.copy()
+        # Check which auth method is available
+        has_oauth = bool(os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'))
+        has_api_key = bool(os.environ.get('ANTHROPIC_API_KEY')) and os.environ.get('ANTHROPIC_API_KEY') != 'your_anthropic_api_key_here'
 
-            # Check which auth method is available
-            has_oauth = bool(os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'))
-            has_api_key = bool(os.environ.get('ANTHROPIC_API_KEY')) and os.environ.get('ANTHROPIC_API_KEY') != 'your_anthropic_api_key_here'
+        if not has_oauth and not has_api_key:
+            logger.warning("[STRATEGY AGENT] No auth configured - need CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY")
+            return False
 
-            if not has_oauth and not has_api_key:
-                logger.warning("[STRATEGY AGENT] No auth configured - need CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY")
+        # Retry loop with exponential backoff
+        for attempt in range(self.max_retries):
+            try:
+                result = subprocess.run(
+                    [
+                        claude_path,
+                        '-p', prompt,
+                        '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task',
+                        '--dangerously-skip-permissions',
+                        '--output-format', 'json'
+                    ],
+                    cwd=str(project_dir),
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=600,
+                    env=env
+                )
+
+                if result.returncode == 0:
+                    # Success - reset failure counter
+                    self.consecutive_api_failures = 0
+                    self.last_api_success = datetime.now()
+
+                    logger.info("[STRATEGY AGENT] Review completed successfully")
+                    try:
+                        output_data = json_module.loads(result.stdout)
+                        cost = output_data.get('total_cost_usd', 0)
+                        duration = output_data.get('duration_ms', 0) / 1000
+                        response = output_data.get('result', '')
+                        logger.info(f"   Duration: {duration:.1f}s | Cost: ${cost:.4f}")
+                        logger.info(f"   Response: {response[:300]}...")
+
+                        response_file = project_dir / 'last_agent_response.json'
+                        with open(response_file, 'w') as f:
+                            json_module.dump(output_data, f, indent=2)
+                        logger.info(f"   Full response saved to: {response_file}")
+                    except json_module.JSONDecodeError:
+                        logger.info(f"   Output: {result.stdout[:500]}...")
+                    return True
+                else:
+                    # Check if it's a retriable error (API 500, timeout, etc.)
+                    stdout_str = result.stdout or ''
+                    is_retriable = any(err in stdout_str for err in ['500', 'api_error', 'Internal server error', 'overloaded'])
+
+                    if is_retriable and attempt < self.max_retries - 1:
+                        delay = self.retry_delays[attempt]
+                        logger.warning(f"[STRATEGY AGENT] API error (attempt {attempt + 1}/{self.max_retries}), retrying in {delay}s...")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        # Non-retriable error or last attempt
+                        logger.error(f"[STRATEGY AGENT] Failed with code {result.returncode}")
+                        logger.error(f"   stdout: {result.stdout[:500] if result.stdout else '(none)'}")
+                        logger.error(f"   stderr: {result.stderr[:500] if result.stderr else '(none)'}")
+                        logger.error(f"   Claude path: {claude_path}")
+                        logger.error(f"   Auth: OAuth={'yes' if has_oauth else 'no'}, API={'yes' if has_api_key else 'no'}")
+
+                        if not is_retriable:
+                            break  # Don't retry non-API errors
+
+            except subprocess.TimeoutExpired:
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_delays[attempt]
+                    logger.warning(f"[STRATEGY AGENT] Timeout (attempt {attempt + 1}/{self.max_retries}), retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    logger.error("[STRATEGY AGENT] Timed out after all retries")
+
+            except FileNotFoundError:
+                logger.warning("[STRATEGY AGENT] Claude CLI not found - review requires manual processing")
+                break  # Can't retry if CLI not found
+
+            except Exception as e:
+                logger.error(f"[STRATEGY AGENT] Error invoking Claude: {e}", exc_info=True)
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_delays[attempt]
+                    logger.warning(f"[STRATEGY AGENT] Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                break
+
+        # All retries exhausted - handle failure
+        self.consecutive_api_failures += 1
+        self._handle_api_failure(trigger_type, context)
+        return False
+
+    def _handle_api_failure(self, trigger_type: str, context: str = ""):
+        """
+        Handle persistent API failures - alert user and trigger fallback rules.
+
+        Called after all retry attempts are exhausted.
+        """
+        alert_data = {
+            "timestamp": datetime.now().isoformat(),
+            "alert_type": "API_FAILURE",
+            "consecutive_failures": self.consecutive_api_failures,
+            "last_success": self.last_api_success.isoformat() if self.last_api_success else None,
+            "trigger_type": trigger_type,
+            "context": context,
+            "message": f"Claude API unavailable after {self.max_retries} retries"
+        }
+
+        # Write alert file
+        alert_file = Path(__file__).parent / 'api_failure_alert.json'
+        with open(alert_file, 'w') as f:
+            json.dump(alert_data, f, indent=2)
+
+        logger.error(f"[API FAILURE] Claude unavailable - {self.consecutive_api_failures} consecutive failures")
+        logger.error(f"   Alert written to: {alert_file}")
+
+        # Try Windows toast notification
+        try:
+            from win10toast import ToastNotifier
+            toaster = ToastNotifier()
+            toaster.show_toast(
+                "AutoInvestor Alert",
+                f"Claude API down - falling back to rules ({self.consecutive_api_failures} failures)",
+                duration=10,
+                threaded=True
+            )
+        except ImportError:
+            pass  # win10toast not installed
+        except Exception as e:
+            logger.warning(f"Could not show toast notification: {e}")
+
+        # Trigger fallback rules if enabled and we've had multiple failures
+        if self.fallback_rules_enabled and self.consecutive_api_failures >= 2:
+            logger.info("[API FAILURE] Triggering fallback rules engine")
+            self._execute_fallback_rules()
+
+    def _execute_fallback_rules(self):
+        """
+        Execute deterministic trading rules when Claude is unavailable.
+
+        These rules provide basic portfolio protection without AI:
+        - RSI-based profit taking
+        - Position size limits
+        - Cash reserve enforcement
+        """
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("[FALLBACK RULES] Executing rule-based decisions (Claude unavailable)")
+        logger.info("=" * 70)
+
+        try:
+            portfolio = self.executor.get_portfolio_summary()
+            if not portfolio or not portfolio.get('positions'):
+                logger.warning("[FALLBACK RULES] No portfolio data available")
                 return
 
-            result = subprocess.run(
-                [
-                    claude_path,
-                    '-p', prompt,
-                    '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Task',
-                    '--dangerously-skip-permissions',
-                    '--output-format', 'json'
-                ],
-                cwd=str(project_dir),
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout for complex reviews
-                env=env  # Pass auth token from .env
-            )
+            actions_taken = []
+            total_value = portfolio['total_value']
+            cash = portfolio['cash']
+            cash_pct = (cash / total_value) * 100 if total_value > 0 else 0
 
-            if result.returncode == 0:
-                logger.info("[STRATEGY AGENT] Review completed successfully")
-                # Parse JSON output for metrics
-                try:
-                    output_data = json_module.loads(result.stdout)
-                    cost = output_data.get('total_cost_usd', 0)
-                    duration = output_data.get('duration_ms', 0) / 1000
-                    response = output_data.get('result', '')
-                    logger.info(f"   Duration: {duration:.1f}s | Cost: ${cost:.4f}")
-                    logger.info(f"   Response: {response[:300]}...")
+            # Get rule thresholds from config
+            rsi_rules = self.fallback_rules.get('rsi_profit_taking', {})
+            extreme_rules = self.fallback_rules.get('extreme_overbought', {})
+            size_rules = self.fallback_rules.get('position_size_limit', {})
+            cash_rules = self.fallback_rules.get('cash_reserve_floor', {})
 
-                    # Save full response to file for review
-                    response_file = project_dir / 'last_agent_response.json'
-                    with open(response_file, 'w') as f:
-                        json_module.dump(output_data, f, indent=2)
-                    logger.info(f"   Full response saved to: {response_file}")
-                except json_module.JSONDecodeError:
-                    logger.info(f"   Output: {result.stdout[:500]}...")
+            for pos in portfolio.get('positions', []):
+                ticker = pos['ticker']
+                qty = pos['quantity']
+                pl_pct = pos.get('unrealized_pl_percent', 0)
+                position_value = pos.get('market_value', 0)
+                position_pct = (position_value / total_value) * 100 if total_value > 0 else 0
+                current_price = pos.get('current_price', 0)
+
+                # Get RSI for this ticker
+                rsi = self._get_rsi_for_ticker(ticker)
+
+                # Rule 1: RSI Profit Taking (RSI > 80 and profit > 20%)
+                rsi_threshold = rsi_rules.get('rsi_threshold', 80)
+                min_profit = rsi_rules.get('min_profit_pct', 20)
+                trim_pct = rsi_rules.get('trim_pct', 0.25)
+
+                if rsi and rsi > rsi_threshold and pl_pct > min_profit:
+                    trim_qty = int(qty * trim_pct)
+                    if trim_qty >= 1:
+                        logger.info(f"[FALLBACK] Rule 1 triggered: {ticker} RSI={rsi:.1f}, P/L=+{pl_pct:.1f}% -> Trim {trim_pct*100:.0f}%")
+                        try:
+                            self.executor.execute_order(ticker, 'SELL', trim_qty, 'market')
+                            actions_taken.append(f"Trimmed {ticker} {trim_pct*100:.0f}% (RSI {rsi:.0f}, +{pl_pct:.0f}% profit)")
+                        except Exception as e:
+                            logger.error(f"[FALLBACK] Failed to execute trim for {ticker}: {e}")
+                        continue  # Don't apply multiple rules to same position
+
+                # Rule 2: Extreme Overbought (RSI > 85 and profit > 30%)
+                extreme_rsi = extreme_rules.get('rsi_threshold', 85)
+                extreme_profit = extreme_rules.get('min_profit_pct', 30)
+                extreme_trim = extreme_rules.get('trim_pct', 0.30)
+
+                if rsi and rsi > extreme_rsi and pl_pct > extreme_profit:
+                    trim_qty = int(qty * extreme_trim)
+                    if trim_qty >= 1:
+                        logger.info(f"[FALLBACK] Rule 2 triggered: {ticker} RSI={rsi:.1f}, P/L=+{pl_pct:.1f}% -> Trim {extreme_trim*100:.0f}%")
+                        try:
+                            self.executor.execute_order(ticker, 'SELL', trim_qty, 'market')
+                            actions_taken.append(f"Trimmed {ticker} {extreme_trim*100:.0f}% (extreme overbought)")
+                        except Exception as e:
+                            logger.error(f"[FALLBACK] Failed to execute trim for {ticker}: {e}")
+                        continue
+
+                # Rule 3: Position Size Limit (position > 35% of portfolio)
+                max_position = size_rules.get('max_position_pct', 35)
+                target_position = size_rules.get('target_position_pct', 30)
+
+                if position_pct > max_position:
+                    target_value = total_value * (target_position / 100)
+                    trim_value = position_value - target_value
+                    trim_qty = int(trim_value / current_price) if current_price > 0 else 0
+                    if trim_qty >= 1:
+                        logger.info(f"[FALLBACK] Rule 3 triggered: {ticker} at {position_pct:.1f}% -> Trim to {target_position}%")
+                        try:
+                            self.executor.execute_order(ticker, 'SELL', trim_qty, 'market')
+                            actions_taken.append(f"Trimmed {ticker} to {target_position}% (position limit)")
+                        except Exception as e:
+                            logger.error(f"[FALLBACK] Failed to execute trim for {ticker}: {e}")
+
+            # Rule 4: Cash Reserve Floor (cash < 8% and best performer > 25% gain)
+            min_cash = cash_rules.get('min_cash_pct', 8)
+            min_profit_to_trim = cash_rules.get('min_profit_to_trim', 25)
+            reserve_trim = cash_rules.get('trim_pct', 0.15)
+
+            if cash_pct < min_cash and not actions_taken:
+                # Find best performer
+                positions = portfolio.get('positions', [])
+                if positions:
+                    best_pos = max(positions, key=lambda p: p.get('unrealized_pl_percent', 0))
+                    if best_pos.get('unrealized_pl_percent', 0) > min_profit_to_trim:
+                        ticker = best_pos['ticker']
+                        qty = best_pos['quantity']
+                        trim_qty = int(qty * reserve_trim)
+                        if trim_qty >= 1:
+                            logger.info(f"[FALLBACK] Rule 4 triggered: Cash={cash_pct:.1f}% -> Trim {ticker} {reserve_trim*100:.0f}%")
+                            try:
+                                self.executor.execute_order(ticker, 'SELL', trim_qty, 'market')
+                                actions_taken.append(f"Trimmed {ticker} {reserve_trim*100:.0f}% (cash reserve)")
+                            except Exception as e:
+                                logger.error(f"[FALLBACK] Failed to execute trim for {ticker}: {e}")
+
+            # Log summary
+            if actions_taken:
+                logger.info(f"[FALLBACK RULES] Executed {len(actions_taken)} actions:")
+                for action in actions_taken:
+                    logger.info(f"   - {action}")
+                self._save_fallback_actions(actions_taken)
             else:
-                logger.error(f"[STRATEGY AGENT] Failed with code {result.returncode}")
-                logger.error(f"   stdout: {result.stdout[:500] if result.stdout else '(none)'}")
-                logger.error(f"   stderr: {result.stderr[:500] if result.stderr else '(none)'}")
-                logger.error(f"   Claude path: {claude_path}")
-                logger.error(f"   Auth: OAuth={'yes' if has_oauth else 'no'}, API={'yes' if has_api_key else 'no'}")
+                logger.info("[FALLBACK RULES] No rule conditions met - portfolio OK")
 
-        except subprocess.TimeoutExpired:
-            logger.error("[STRATEGY AGENT] Timed out after 5 minutes")
-        except FileNotFoundError:
-            logger.warning("[STRATEGY AGENT] Claude CLI not found - review requires manual processing")
         except Exception as e:
-            logger.error(f"[STRATEGY AGENT] Error invoking Claude: {e}", exc_info=True)
+            logger.error(f"[FALLBACK RULES] Error executing fallback rules: {e}", exc_info=True)
+
+    def _get_rsi_for_ticker(self, ticker: str) -> Optional[float]:
+        """Get current RSI for a ticker"""
+        try:
+            from autoinvestor_api import get_technical_indicators
+            indicators = get_technical_indicators(ticker)
+            if indicators:
+                return indicators.get('rsi')
+        except Exception as e:
+            logger.warning(f"Could not get RSI for {ticker}: {e}")
+        return None
+
+    def _save_fallback_actions(self, actions: list):
+        """Save fallback actions to file for audit trail"""
+        try:
+            fallback_file = Path(__file__).parent / 'fallback_actions.json'
+            with open(fallback_file, 'w') as f:
+                json.dump({
+                    "timestamp": datetime.now().isoformat(),
+                    "actions": actions,
+                    "reason": "Claude API unavailable",
+                    "consecutive_failures": self.consecutive_api_failures
+                }, f, indent=2)
+            logger.info(f"[FALLBACK] Actions saved to: {fallback_file}")
+        except Exception as e:
+            logger.error(f"Could not save fallback actions: {e}")
 
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check for dip-buying opportunities on configured tickers"""
@@ -592,6 +872,45 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             logger.error(f"Error loading thresholds: {e}")
             return False
 
+    def _load_fallback_rules_config(self):
+        """Load fallback rules configuration from thresholds.json"""
+        try:
+            if not self.thresholds_file.exists():
+                # Use defaults
+                self.fallback_rules = {
+                    'enabled': True,
+                    'rsi_profit_taking': {'rsi_threshold': 80, 'min_profit_pct': 20, 'trim_pct': 0.25},
+                    'extreme_overbought': {'rsi_threshold': 85, 'min_profit_pct': 30, 'trim_pct': 0.30},
+                    'position_size_limit': {'max_position_pct': 35, 'target_position_pct': 30},
+                    'cash_reserve_floor': {'min_cash_pct': 8, 'min_profit_to_trim': 25, 'trim_pct': 0.15}
+                }
+                return
+
+            with open(self.thresholds_file, 'r') as f:
+                config = json.load(f)
+
+            if 'fallback_rules' in config:
+                self.fallback_rules = config['fallback_rules']
+                self.fallback_rules_enabled = self.fallback_rules.get('enabled', True)
+            else:
+                # Use defaults if not in config
+                self.fallback_rules = {
+                    'enabled': True,
+                    'rsi_profit_taking': {'rsi_threshold': 80, 'min_profit_pct': 20, 'trim_pct': 0.25},
+                    'extreme_overbought': {'rsi_threshold': 85, 'min_profit_pct': 30, 'trim_pct': 0.30},
+                    'position_size_limit': {'max_position_pct': 35, 'target_position_pct': 30},
+                    'cash_reserve_floor': {'min_cash_pct': 8, 'min_profit_to_trim': 25, 'trim_pct': 0.15}
+                }
+        except Exception as e:
+            logger.warning(f"Error loading fallback rules config: {e} - using defaults")
+            self.fallback_rules = {
+                'enabled': True,
+                'rsi_profit_taking': {'rsi_threshold': 80, 'min_profit_pct': 20, 'trim_pct': 0.25},
+                'extreme_overbought': {'rsi_threshold': 85, 'min_profit_pct': 30, 'trim_pct': 0.30},
+                'position_size_limit': {'max_position_pct': 35, 'target_position_pct': 30},
+                'cash_reserve_floor': {'min_cash_pct': 8, 'min_profit_to_trim': 25, 'trim_pct': 0.15}
+            }
+
     def _load_vix_history(self):
         """Load VIX history from log file"""
         if VIX_LOG_PATH.exists():
@@ -685,8 +1004,8 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 if self.previous_vix_regime != current_regime:
                     # Significant regime changes that warrant review:
                     # - Any transition to/from ELEVATED or HIGH
-                    # - Moving up: NORMAL → ELEVATED, ELEVATED → HIGH
-                    # - Moving down: HIGH → ELEVATED, ELEVATED → NORMAL
+                    # - Moving up: NORMAL -> ELEVATED, ELEVATED -> HIGH
+                    # - Moving down: HIGH -> ELEVATED, ELEVATED -> NORMAL
                     significant_changes = [
                         ('NORMAL', 'ELEVATED'),
                         ('ELEVATED', 'HIGH'),
@@ -698,7 +1017,7 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
 
                     if (self.previous_vix_regime, current_regime) in significant_changes:
                         threshold_crossed = True
-                        logger.warning(f"[VIX REGIME CHANGE] {self.previous_vix_regime} → {current_regime}")
+                        logger.warning(f"[VIX REGIME CHANGE] {self.previous_vix_regime} -> {current_regime}")
 
             # Log VIX data
             logger.info(f"VIX: {vix_level:.2f} (Regime: {current_regime})")
@@ -747,7 +1066,7 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             with open(alert_file, 'w') as f:
                 json.dump(alert, f, indent=2)
 
-            logger.info(f"VIX: {self.previous_vix:.2f} ({self.previous_vix_regime}) → {vix_level:.2f} ({regime})")
+            logger.info(f"VIX: {self.previous_vix:.2f} ({self.previous_vix_regime}) -> {vix_level:.2f} ({regime})")
             logger.info(f"Alert written to: {alert_file}")
             logger.info("=" * 70)
             logger.info("")
@@ -1004,19 +1323,33 @@ Current holdings (already own): {', '.join(current_holdings)}
 - {'ON MARGIN - prioritize clearing before new positions' if portfolio.get('cash', 0) < 0 else 'Cash available for new positions'}
 - Opportunity reserve target: {self.opportunity_reserve_pct * 100:.0f}% of portfolio
 
-## Analysis Required
+## Analysis Required - LONG Opportunities
 For each ticker in scan_universe:
 1. Get current technicals (RSI, MACD, SMA trends)
 2. Check if STRONG BUY signal
 3. If promising, note entry criteria
 
+## SHORT SELLING - Test Mode Active (check thresholds.json)
+ALSO scan for SHORT candidates from weak sectors:
+- Traditional Retail (M, GPS, VFC)
+- Legacy Media (PARA, WBD)
+- Office REITs (MPW)
+- Fossil Fuel (SLB, OXY)
+- Legacy Auto (non-EV)
+
+Short criteria: below 200-day SMA, RSI < 40, bearish MACD, weak fundamentals
+- $2500 test allocation total, max $1000 per position
+- 10% stop-loss, 15% take-profit
+- Use SHORT to open, COVER to close
+
 ## Output Required
 Update the watchlist with top opportunities:
-- Ticker, signal strength, target entry price, reasoning
+- LONG: Ticker, signal strength, target entry price, reasoning
+- SHORT: Ticker, bearish signal, entry price, stop-loss level
 - Rank by conviction
 - Note which current holdings to potentially trim to fund new positions
 
-Focus on finding the BEST opportunities in the AI ecosystem right now.
+Focus on finding the BEST opportunities - both long AND short.
 """
 
             # Write discovery alert
@@ -1272,15 +1605,29 @@ Focus on finding the BEST opportunities in the AI ecosystem right now.
                     ticker = pos['ticker']
                     price = current_prices.get(ticker, pos['current_price'])
                     entry = pos['avg_cost']
-                    pnl_pct = ((price - entry) / entry) * 100
+                    quantity = pos['quantity']
+                    is_short = quantity < 0
 
                     # Get VIX-adaptive stop-loss for this position
                     stop_loss_pct = self.get_stop_loss_for_position(ticker, current_vix_regime)
-                    stop_loss = entry * (1 - stop_loss_pct)
 
-                    status = "[OK]" if price > stop_loss else "[NEAR STOP]"
-                    stop_label = f"-{int(stop_loss_pct * 100)}%"
-                    logger.info(f"  {ticker}: ${price:.2f} (entry: ${entry:.2f}, P&L: {pnl_pct:+.2f}%, stop: ${stop_loss:.2f} {stop_label}) {status}")
+                    if is_short:
+                        # Short position: profit when price drops, loss when rises
+                        pnl_pct = ((entry - price) / entry) * 100  # Inverted for shorts
+                        stop_loss = entry * (1 + stop_loss_pct)  # Stop ABOVE entry
+                        status = "[OK]" if price < stop_loss else "[NEAR STOP]"
+                        stop_label = f"+{int(stop_loss_pct * 100)}%"
+                        pos_type = "SHORT"
+                    else:
+                        # Long position: profit when price rises
+                        pnl_pct = ((price - entry) / entry) * 100
+                        stop_loss = entry * (1 - stop_loss_pct)  # Stop BELOW entry
+                        status = "[OK]" if price > stop_loss else "[NEAR STOP]"
+                        stop_label = f"-{int(stop_loss_pct * 100)}%"
+                        pos_type = ""
+
+                    pos_prefix = f"{pos_type} " if pos_type else ""
+                    logger.info(f"  {pos_prefix}{ticker}: ${price:.2f} (entry: ${entry:.2f}, P&L: {pnl_pct:+.2f}%, stop: ${stop_loss:.2f} {stop_label}) {status}")
 
                 # Check for actions
                 actions = []

@@ -10,6 +10,16 @@
         "ALPACA_SECRET_KEY": "5wuTUWsjjFi2abghb8mwVujHvX2d7NmhFZsBv9QPYkRc",
         "ALPACA_BASE_URL": "https://paper-api.alpaca.markets/v2"
       }
+    },
+    "alpaca-options": {
+      "type": "stdio",
+      "command": "C:\\Users\\allis\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\alpaca-mcp-server.exe",
+      "args": ["serve"],
+      "env": {
+        "ALPACA_API_KEY": "PK55CHSL356IHAP5LPM5N7GDR3",
+        "ALPACA_SECRET_KEY": "5wuTUWsjjFi2abghb8mwVujHvX2d7NmhFZsBv9QPYkRc",
+        "ALPACA_PAPER_TRADE": "true"
+      }
     }
   }
 }
