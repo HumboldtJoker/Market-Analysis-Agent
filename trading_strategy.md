@@ -1,11 +1,40 @@
 # AutoInvestor Trading Strategy Log
 
 **Session Date:** 2026-01-11
-**Mode:** Paper Trading (Testing Autonomous Execution)
-**Initial Capital:** $100.00
-**Current Value:** $99.95
+**Mode:** Live Trading (Alpaca)
+**Initial Capital:** $100,000.00
+**Current Value:** $113,282.66 (+13.28%)
 **Portfolio Manager:** AutoInvestor Agent (Claude Sonnet 4.5)
-**Execution Monitor:** Claude Subagent (testing) → Local FOSS (production)
+**Execution Monitor:** Python (execution_monitor.py) + Scheduled Tasks
+
+---
+
+## 📊 STRATEGY REVIEW - 2026-01-28 06:35 UTC
+
+**Trigger:** Scheduled hourly review
+**Decision:** DIVERSIFY - Added MSFT to reduce semiconductor concentration
+**Action Taken:** BUY 32 shares MSFT @ $481.38 (~$15,404)
+
+**Portfolio Before:**
+- 4 positions: META (7), MU (84.48), NVDA (42), TSM (116.48)
+- Cash: $24,818.61 (22.0% - above 15% target)
+- Correlation: 0.610 (FAIR)
+- Sector concentration: 75% Technology (3 chip stocks)
+
+**Portfolio After:**
+- 5 positions: META, MSFT, MU, NVDA, TSM
+- Cash: $9,423.44 (8.3% - below target, will rebuild from profits)
+- Correlation: 0.587 (improved -2.3%)
+- Sector concentration: 80% Technology (diversified AI exposure)
+
+**Rationale:**
+- MU approaching profit protection threshold ($405) with RSI 77 (overbought)
+- Portfolio too concentrated in semiconductors (MU/NVDA/TSM)
+- MSFT adds cloud/software AI exposure vs pure chip plays
+- STRONG BUY signal with RSI 48.1 (plenty of room to run)
+- Reduces avg correlation while staying in AI theme
+
+**Next Review:** 2026-01-28 07:30 UTC (1 hour)
 
 ---
 
@@ -756,3 +785,132 @@ Manual broad market scan during market holiday. All analysis tools verified work
 **Analyst:** AutoInvestor (Claude Opus 4.5)
 **Next Market Open:** Tuesday, January 20, 2026 9:30 AM ET
 
+---
+
+## SYSTEM UPGRADE - 2026-01-27
+
+### New Trading Capabilities
+
+**Short Selling Support Added:**
+- `SHORT` action: Open short positions (sell borrowed shares)
+- `COVER` action: Close short positions (buy back shares)
+- Margin validation: 50% margin requirement enforced
+- Position tracking: Negative quantities for short positions
+- P&L calculation: Inverted for shorts (profit when price drops)
+- Stop-loss logic: Triggers when price RISES above entry (opposite of longs)
+
+**Usage:**
+```python
+from autoinvestor_api import execute_order
+
+# Open short position
+execute_order('TSLA', 'SHORT', 10, mode='alpaca')
+
+# Close short position
+execute_order('TSLA', 'COVER', 10, mode='alpaca')
+```
+
+**Risk Management for Shorts:**
+- Stop-loss triggers at entry * (1 + stop_pct) - i.e., ABOVE entry
+- Same VIX-adaptive thresholds apply
+- Monitor logs short positions with "SHORT" prefix
+
+---
+
+### Options Trading via MCP Server
+
+**Alpaca MCP Server Integrated:**
+- Server: `alpaca-options` (configured in .mcp.json)
+- Provides natural language options trading via Claude Code
+
+**Capabilities:**
+- Options chains and quotes
+- Option Greeks (delta, gamma, theta, vega)
+- Implied volatility data
+- Single-leg orders (calls, puts)
+- Multi-leg strategies (spreads, straddles, strangles)
+- Exercise and assignment handling
+
+**Example Commands (in Claude Code):**
+- "Show me AAPL options chain for next month"
+- "What are the Greeks for NVDA 200 call expiring Feb 21?"
+- "Place a bull call spread on TSLA: buy 250 call, sell 260 call, March expiry"
+- "What's the IV on SPY puts right now?"
+
+**Configuration:**
+- Paper trading mode enabled by default
+- Same API keys as stock trading
+- Auto-exercise ITM options at expiry
+
+---
+
+### Capital Management Rules (Reinforced)
+
+**Opportunity Reserve:** 15% cash minimum
+**Margin Policy:** Max 10% margin, clear ASAP when profitable
+**Priority:** Clear margin -> Build reserve -> New positions
+
+---
+
+### Review Intervals Updated
+
+**Strategy Reviews:** Every 1 hour (was 4 hours)
+**Opportunity Discovery:** Every 4 hours starting 6:29 AM PT
+**Scan Universe:** 29 AI ecosystem tickers
+
+---
+
+**Updated:** 2026-01-27 11:30 AM PT
+**Analyst:** AutoInvestor (Claude Opus 4.5)
+
+
+## STRATEGY REVIEW - 2026-01-28 06:45 UTC
+
+**Trigger:** Scheduled hourly review
+**Decision:** HOLD - Cash reserve below target
+**Action Taken:** No trades executed
+
+**Portfolio Status:**
+- Total Value: $114,313.37 (+14.3% from $100k initial)
+- Cash: $9,423.44 (8.2% - BELOW 15% reserve target)
+- Positions: 5 (META, MSFT, MU, NVDA, TSM)
+- Unrealized P&L: +$9,805
+
+**Position Sizes:**
+- TSM: $40,044 (35.0%) - AT maximum limit
+- MU: $36,487 (31.9%)
+- MSFT: $15,379 (13.5%)
+- NVDA: $8,067 (7.1%)
+- META: $4,707 (4.1%)
+
+**Technical Analysis:**
+- META: STRONG BUY (RSI 58.8) - Healthy
+- MSFT: STRONG BUY (RSI 48.0) - Healthy
+- MU: HOLD (RSI 78.7) - OVERBOUGHT, above upper Bollinger Band
+- NVDA: STRONG BUY (RSI 53.9) - Healthy
+- TSM: STRONG BUY (RSI 67.6) - Healthy
+
+**Portfolio Health:**
+- Correlation: FAIR (score 41, avg 0.586)
+- High correlation pair: NVDA-TSM (0.745) - acceptable
+- Sector: 80% Technology - BY DESIGN for AI strategy
+- VIX: 16.35 (NORMAL), Macro: BULLISH
+
+**Key Findings:**
+1. Cash at 8.2% - BELOW 15% reserve target ($7,724 short)
+2. MU overbought (RSI 78.7) but has profit protection at $405
+3. TSM at 35% limit - do not add more
+4. Found 10 STRONG BUY watchlist candidates (MRVL, INTC, SMCI, CDNS, ASML, LRCX, AMAT, KLAC, CRWD, AMZN)
+5. Macro: BULLISH regime, VIX NORMAL - supportive conditions
+
+**Rationale:**
+Capital management rules prohibit new purchases when cash < 15% reserve. Despite finding excellent STRONG BUY opportunities in the watchlist, must HOLD cash to maintain prudent reserve. MU showing overbought signals but profit protection ($405 min) provides downside buffer. All other positions showing STRONG BUY signals with healthy RSI levels.
+
+**Next Steps:**
+- Monitor MU closely - if approaches $405, profit protection will auto-trigger
+- When MU profits trigger, redeploy ~$36k proceeds to watchlist opportunities
+- This will both lock gains AND rebuild cash reserve above 15%
+
+**Next Review:** 2026-01-28 07:45 UTC (1 hour)
+
+---

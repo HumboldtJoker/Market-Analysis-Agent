@@ -124,7 +124,7 @@ for ticker, qty in sorted(targets.items(), key=lambda x: TARGET_ALLOCATIONS[x[0]
         print(f'  - Result: {result["status"]}')
         time.sleep(1)  # Rate limit
     except Exception as e:
-        print(f'  ❌ ERROR: {e}')
+        print(f'  [ERROR] {e}')
         execution_results.append({
             'ticker': ticker,
             'qty': qty,

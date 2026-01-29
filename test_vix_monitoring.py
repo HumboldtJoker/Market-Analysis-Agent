@@ -89,10 +89,10 @@ def test_threshold_crossing():
 
     # Test scenarios
     test_cases = [
-        (18.5, 'NORMAL', 21.3, 'ELEVATED', True, "NORMAL → ELEVATED (crossing up)"),
-        (22.0, 'ELEVATED', 31.5, 'HIGH', True, "ELEVATED → HIGH (crossing up)"),
-        (28.0, 'ELEVATED', 18.0, 'NORMAL', True, "ELEVATED → NORMAL (crossing down)"),
-        (32.0, 'HIGH', 25.0, 'ELEVATED', True, "HIGH → ELEVATED (crossing down)"),
+        (18.5, 'NORMAL', 21.3, 'ELEVATED', True, "NORMAL -> ELEVATED (crossing up)"),
+        (22.0, 'ELEVATED', 31.5, 'HIGH', True, "ELEVATED -> HIGH (crossing up)"),
+        (28.0, 'ELEVATED', 18.0, 'NORMAL', True, "ELEVATED -> NORMAL (crossing down)"),
+        (32.0, 'HIGH', 25.0, 'ELEVATED', True, "HIGH -> ELEVATED (crossing down)"),
         (17.0, 'NORMAL', 18.5, 'NORMAL', False, "Within same regime (no crossing)"),
         (12.0, 'CALM', 13.5, 'CALM', False, "Within same regime (no crossing)"),
     ]
@@ -114,7 +114,7 @@ def test_threshold_crossing():
             passed += 1
 
         print(f"[{result}] {description}")
-        print(f"      {prev_vix:.1f} ({prev_regime}) → {curr_vix:.1f} ({curr_regime})")
+        print(f"      {prev_vix:.1f} ({prev_regime}) -> {curr_vix:.1f} ({curr_regime})")
         print(f"      Expected crossing: {expected_cross}, Got: {should_cross}")
 
     print(f"\n{passed}/{len(test_cases)} test cases passed")

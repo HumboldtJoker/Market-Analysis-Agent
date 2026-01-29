@@ -148,10 +148,10 @@ def main():
 
     print(f"\n\nFull results saved to: {output_file}")
     print("\nThis collaborative recommendation combines:")
-    print("  ✓ AI's comprehensive data analysis")
-    print("  ✓ Your contextual knowledge and preferences")
-    print("  ✓ Clear attribution of how insights were integrated")
-    print("\nAugmentation, not replacement. 🤝")
+    print("  - AI's comprehensive data analysis")
+    print("  - Your contextual knowledge and preferences")
+    print("  - Clear attribution of how insights were integrated")
+    print("\nAugmentation, not replacement.")
 
 
 if __name__ == "__main__":

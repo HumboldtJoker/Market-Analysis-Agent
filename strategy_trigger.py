@@ -257,7 +257,7 @@ Format your response with clear sections:
         change_pct = abs((vix_level - previous_vix) / previous_vix * 100)
 
         reason = (
-            f"VIX regime change: {previous_regime} → {regime}\n"
+            f"VIX regime change: {previous_regime} -> {regime}\n"
             f"VIX {direction} from {previous_vix:.2f} to {vix_level:.2f} ({change_pct:.1f}% change)"
         )
 
@@ -325,7 +325,7 @@ def test_strategy_trigger():
     # Trigger test review
     trigger = StrategyTrigger()
     result = trigger.trigger_strategic_review(
-        reason="Test VIX threshold crossing (NORMAL → ELEVATED)",
+        reason="Test VIX threshold crossing (NORMAL -> ELEVATED)",
         context=test_context
     )
 

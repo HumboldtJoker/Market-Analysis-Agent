@@ -228,6 +228,50 @@ The goal is to ride the AI bubble aggressively, not to diversify out of it.
 - Semiconductor equipment and materials
 - AI application companies (not just chips)
 
+### Short Selling Guidelines:
+
+**When to SHORT:**
+- Clear downtrend with STRONG SELL signal
+- Overbought RSI (>80) with bearish divergence
+- Breaking below key support levels
+- Sector rotation away from the stock's sector
+
+**Short Position Management:**
+- Stop-loss ABOVE entry (opposite of longs)
+- Same VIX-adaptive thresholds apply
+- Monitor for short squeeze risk (high short interest + positive catalyst)
+- Cover on technical reversal signals
+
+**Execution:**
+```python
+from autoinvestor_api import execute_order
+
+# Open short
+execute_order('TICKER', 'SHORT', quantity, mode='alpaca')
+
+# Close short
+execute_order('TICKER', 'COVER', quantity, mode='alpaca')
+```
+
+### Options Trading (via MCP Server):
+
+**When to Use Options:**
+- Hedging existing positions (protective puts)
+- Leveraged directional bets (calls/puts)
+- Income generation (covered calls on winners)
+- Volatility plays (straddles around earnings)
+
+**Available via alpaca-options MCP server:**
+- Option chains and quotes
+- Greeks (delta, gamma, theta, vega)
+- Implied volatility
+- Multi-leg strategies (spreads, straddles)
+
+**Example Prompts (in Claude Code session):**
+- "Show NVDA options chain for February expiry"
+- "What's the delta on TSM 350 calls?"
+- "Place a protective put on my MU position"
+
 ## Output Requirements
 
 After completing the review, output a summary:
