@@ -72,10 +72,10 @@
     "notes": "Maintain 15% cash reserve. Minimize margin - clear ASAP when positions profit."
   },
   "review_intervals": {
-    "strategy_review_hours": 1,
+    "strategy_review_hours": 0.083,
     "discovery_interval_hours": 4,
     "discovery_start_time": "06:29",
-    "notes": "Strategy reviews hourly. Opportunity discovery every 4 hours starting 6:29 AM PT."
+    "notes": "Strategy reviews every ~5 minutes for active trading. Discovery every 4 hours starting 6:29 AM PT."
   },
   "watchlist": {
     "candidates": {},
@@ -109,23 +109,36 @@
         "Legacy Automotive (non-EV pure plays)"
       ],
       "scan_criteria": [
-        "Below 200-day SMA",
+        "Below 50-day SMA",
         "RSI < 40 (weak momentum)",
         "Bearish MACD crossover",
         "Declining revenue YoY",
         "High debt / weak balance sheet"
       ],
-      "example_tickers": ["M", "GPS", "VFC", "SLB", "OXY", "MPW", "PARA", "WBD"],
+      "example_tickers": ["M", "VFC", "SLB", "OXY", "MPW", "WBD", "CVS", "AAL", "UAL", "F"],
       "notes": "Agent should identify 2-3 candidates from struggling sectors, not fight strong trends"
     },
     "rules": {
       "max_position_size_usd": 1000,
+      "max_total_short_positions": 2,
       "stop_loss_pct": 0.10,
       "take_profit_pct": 0.15,
       "max_hold_days": 10,
       "notes": "Small positions, tight stops, quick profits. This is practice, not alpha generation."
     },
-    "notes": "ACTIVE: Agent should evaluate short opportunities each review. Test the system with small stakes in clearly weak sectors."
+    "day_trade_management": {
+      "max_day_trades_per_day": 2,
+      "prefer_overnight_holds": true,
+      "only_close_same_day_if": ["stop_loss_triggered", "take_profit_hit", "15%+ gain"],
+      "notes": "PDT rule: 4 day trades per 5 rolling days. Conserve by holding overnight when possible."
+    },
+    "position_rules": {
+      "check_existing_before_opening": true,
+      "do_not_add_to_existing_shorts": true,
+      "max_short_positions": 2,
+      "notes": "CRITICAL: Check if short already open before adding. Do NOT stack positions!"
+    },
+    "notes": "ACTIVE: Evaluate shorts each review but ONLY open if not already in position. Respect day trade limits."
   },
   "options_trading": {
     "enabled": true,
