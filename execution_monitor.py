@@ -403,7 +403,8 @@ Run /strategy-review to analyze the portfolio and redeploy the proceeds.
 Check portfolio correlation and sector concentration before adding positions.
 Execute trades as recommended by the strategy review skill."""
         elif trigger_type == 'scheduled':
-            prompt = f"""A scheduled strategy review is due (runs every {self.review_interval_hours} hour(s)).
+            interval_str = f"{int(self.review_interval_hours * 60)} minutes" if self.review_interval_hours < 1 else f"{self.review_interval_hours} hour(s)"
+            prompt = f"""A scheduled strategy review is due (runs every {interval_str}).
 Run /strategy-review to scan for opportunities and adjust positions as needed.
 Check portfolio_health in scheduled_review_needed.json for correlation and sector data.
 Also check the watchlist in thresholds.json for entry opportunities.
@@ -413,12 +414,13 @@ Capital rules:
 - Max margin: {self.max_margin_pct * 100:.0f}% - clear margin ASAP when positions profit
 
 SHORT SELLING (ACTIVE - check thresholds.json short_selling section):
-- Test mode enabled with $2500 allocation for learning
-- Scan bearish_sectors for short candidates (retail, legacy media, office REITs, fossil fuel, legacy auto)
-- Look for: below 200-day SMA, RSI < 40, bearish MACD, declining fundamentals
-- Max $1000 per position, 10% stop-loss, 15% take-profit target
-- Use SHORT action to open, COVER to close
-- This is practice - evaluate at least 2-3 short candidates each review
+- CRITICAL: CHECK EXISTING POSITIONS FIRST - do NOT add to existing shorts!
+- Max 2 short positions total, max $1000 each
+- If already have a short open in a ticker, SKIP IT - do not open another
+- Scan bearish_sectors for NEW candidates only (retail, legacy media, office REITs, fossil fuel, legacy auto)
+- Look for: below 50-day SMA, RSI < 40, bearish MACD, weak fundamentals
+- 10% stop-loss, 15% take-profit target
+- CONSERVE DAY TRADES: Only 4 per 5 days. Prefer overnight holds. Only close same-day if stop/target hit.
 
 Address any concentration risks or high-correlation pairs flagged in the alert."""
         elif trigger_type == 'vix_alert':
@@ -1278,8 +1280,8 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
             logger.info("=" * 70)
             logger.info("")
 
-            # Update last review time
-            self.last_scheduled_review = datetime.now()
+            # Update last review time (use Eastern time to match check_if_review_due)
+            self.last_scheduled_review = datetime.now(self.eastern_tz).replace(tzinfo=None)
             self._save_last_review_time()
 
             # Invoke Claude strategy agent to process the review
