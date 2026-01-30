@@ -72,10 +72,10 @@
     "notes": "Maintain 15% cash reserve. Minimize margin - clear ASAP when positions profit."
   },
   "review_intervals": {
-    "strategy_review_hours": 0.083,
+    "strategy_review_hours": 0.5,
     "discovery_interval_hours": 4,
     "discovery_start_time": "06:29",
-    "notes": "Strategy reviews every ~5 minutes for active trading. Discovery every 4 hours starting 6:29 AM PT."
+    "notes": "Strategy reviews every 30 minutes to conserve tokens. Discovery every 4 hours starting 6:29 AM PT."
   },
   "watchlist": {
     "candidates": {},

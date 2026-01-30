@@ -208,6 +208,27 @@ class ExecutionMonitor:
 
         return prices
 
+    def _get_existing_short_tickers(self) -> List[str]:
+        """Get list of tickers with existing short positions.
+
+        Used to enforce hard-coded blocking of short stacking before agent invocation.
+        Returns list of ticker symbols that already have short positions.
+        """
+        try:
+            portfolio = self.executor.get_portfolio_summary()
+            short_tickers = []
+            for position in portfolio.get('positions', []):
+                if position.get('quantity', 0) < 0:  # Negative qty = short
+                    short_tickers.append(position['ticker'])
+            return short_tickers
+        except Exception as e:
+            logger.error(f"Failed to get existing short positions: {e}")
+            return []
+
+    def _get_short_position_count(self) -> int:
+        """Get count of current short positions."""
+        return len(self._get_existing_short_tickers())
+
     def check_stop_losses(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check all positions for stop-loss triggers using VIX-adaptive thresholds"""
         actions = []
@@ -404,6 +425,37 @@ Check portfolio correlation and sector concentration before adding positions.
 Execute trades as recommended by the strategy review skill."""
         elif trigger_type == 'scheduled':
             interval_str = f"{int(self.review_interval_hours * 60)} minutes" if self.review_interval_hours < 1 else f"{self.review_interval_hours} hour(s)"
+
+            # HARD-CODED SHORT POSITION BLOCKING
+            # Get existing short tickers to prevent stacking
+            existing_shorts = self._get_existing_short_tickers()
+            short_count = len(existing_shorts)
+            max_shorts = 2  # From thresholds.json short_selling.position_rules.max_short_positions
+
+            if short_count >= max_shorts:
+                short_block_msg = f"""
+***** HARD BLOCK: NO NEW SHORTS ALLOWED *****
+Current short positions: {short_count}/{max_shorts} (AT MAXIMUM)
+Existing shorts: {', '.join(existing_shorts) if existing_shorts else 'none'}
+DO NOT open ANY new short positions. Only manage existing shorts.
+*********************************************"""
+            elif existing_shorts:
+                short_block_msg = f"""
+***** BLOCKED TICKERS FOR SHORTING *****
+Existing short positions ({short_count}/{max_shorts}): {', '.join(existing_shorts)}
+DO NOT open new shorts in: {', '.join(existing_shorts)}
+Only {max_shorts - short_count} new short position(s) allowed in OTHER tickers.
+****************************************"""
+            else:
+                short_block_msg = f"""
+Short positions: {short_count}/{max_shorts} (can open up to {max_shorts} new shorts)"""
+
+            # Log the short position blocking status
+            if existing_shorts:
+                logger.info(f"[SHORT BLOCKING] Existing shorts: {existing_shorts} ({short_count}/{max_shorts})")
+            else:
+                logger.info(f"[SHORT BLOCKING] No existing shorts (0/{max_shorts})")
+
             prompt = f"""A scheduled strategy review is due (runs every {interval_str}).
 Run /strategy-review to scan for opportunities and adjust positions as needed.
 Check portfolio_health in scheduled_review_needed.json for correlation and sector data.
@@ -412,11 +464,10 @@ Also check the watchlist in thresholds.json for entry opportunities.
 Capital rules:
 - Maintain {self.opportunity_reserve_pct * 100:.0f}% opportunity reserve
 - Max margin: {self.max_margin_pct * 100:.0f}% - clear margin ASAP when positions profit
+{short_block_msg}
 
-SHORT SELLING (ACTIVE - check thresholds.json short_selling section):
-- CRITICAL: CHECK EXISTING POSITIONS FIRST - do NOT add to existing shorts!
+SHORT SELLING RULES (check thresholds.json short_selling section):
 - Max 2 short positions total, max $1000 each
-- If already have a short open in a ticker, SKIP IT - do not open another
 - Scan bearish_sectors for NEW candidates only (retail, legacy media, office REITs, fossil fuel, legacy auto)
 - Look for: below 50-day SMA, RSI < 40, bearish MACD, weak fundamentals
 - 10% stop-loss, 15% take-profit target
