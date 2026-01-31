@@ -34,6 +34,7 @@ load_dotenv()
 from order_executor import OrderExecutor
 from risk_manager import RiskManager
 from autoinvestor_api import get_correlation, get_sectors
+from overnight_scanner import OvernightScanner
 
 # Import strategy trigger for VIX-based reviews
 try:
@@ -166,6 +167,16 @@ class ExecutionMonitor:
         # Load fallback rules config
         self.fallback_rules_enabled = True
         self._load_fallback_rules_config()
+
+        # Overnight scanner for pre-market briefings
+        self.overnight_scanner = OvernightScanner(executor=self.executor)
+        self.last_overnight_scan = None
+        self.last_premarket_briefing = None
+        self._load_overnight_state()
+
+        # Overnight scan schedule (PT times)
+        self.overnight_scan_times = ["20:00", "02:00"]  # 8 PM, 2 AM PT
+        self.premarket_briefing_time = "06:15"  # 6:15 AM PT
 
         logger.info(f"Strategy reviews every {self.review_interval_hours} hour(s)")
         logger.info(f"Opportunity discovery every {self.discovery_interval_hours} hours starting {self.discovery_start_time}")
@@ -1182,6 +1193,111 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
         except Exception as e:
             logger.error(f"Could not save discovery time: {e}")
 
+    def _load_overnight_state(self):
+        """Load overnight scanner state"""
+        state_file = 'overnight_state.json'
+        try:
+            if Path(state_file).exists():
+                with open(state_file, 'r') as f:
+                    data = json.load(f)
+                    if 'last_overnight_scan' in data:
+                        self.last_overnight_scan = datetime.fromisoformat(data['last_overnight_scan'])
+                    if 'last_premarket_briefing' in data:
+                        self.last_premarket_briefing = datetime.fromisoformat(data['last_premarket_briefing'])
+                    logger.info(f"Loaded overnight state - last scan: {self.last_overnight_scan}, last briefing: {self.last_premarket_briefing}")
+        except Exception as e:
+            logger.warning(f"Could not load overnight state: {e}")
+
+    def _save_overnight_state(self):
+        """Save overnight scanner state"""
+        state_file = 'overnight_state.json'
+        try:
+            with open(state_file, 'w') as f:
+                json.dump({
+                    'last_overnight_scan': self.last_overnight_scan.isoformat() if self.last_overnight_scan else None,
+                    'last_premarket_briefing': self.last_premarket_briefing.isoformat() if self.last_premarket_briefing else None
+                }, f, indent=2)
+        except Exception as e:
+            logger.error(f"Could not save overnight state: {e}")
+
+    def _check_overnight_schedule(self):
+        """
+        Check if overnight news scan or pre-market briefing is due.
+        Runs during non-market hours.
+        """
+        pacific_tz = pytz.timezone('US/Pacific')
+        now_pt = datetime.now(pacific_tz)
+        current_time_str = now_pt.strftime("%H:%M")
+        today = now_pt.date()
+
+        # Check for overnight scan times (8 PM, 2 AM PT)
+        for scan_time in self.overnight_scan_times:
+            scan_hour, scan_min = map(int, scan_time.split(':'))
+
+            # Check if we're within 5 minutes of scan time
+            scan_datetime = now_pt.replace(hour=scan_hour, minute=scan_min, second=0, microsecond=0)
+            time_diff = abs((now_pt - scan_datetime).total_seconds())
+
+            if time_diff < 300:  # Within 5 minutes
+                # Check if already scanned today at this time
+                if self.last_overnight_scan:
+                    last_scan_pt = self.last_overnight_scan.astimezone(pacific_tz) if self.last_overnight_scan.tzinfo else pacific_tz.localize(self.last_overnight_scan)
+                    hours_since_scan = (now_pt - last_scan_pt).total_seconds() / 3600
+
+                    if hours_since_scan < 4:  # Don't scan if scanned within 4 hours
+                        return
+
+                logger.info("")
+                logger.info("=" * 70)
+                logger.info("[OVERNIGHT SCAN] Running scheduled overnight news scan")
+                logger.info(f"   Time: {current_time_str} PT")
+                logger.info("=" * 70)
+
+                try:
+                    self.overnight_scanner.scan_overnight_news()
+                    self.overnight_scanner.get_earnings_calendar()
+                    self.last_overnight_scan = datetime.now()
+                    self._save_overnight_state()
+                    logger.info("[OVERNIGHT SCAN] Complete")
+                except Exception as e:
+                    logger.error(f"[OVERNIGHT SCAN] Error: {e}")
+
+                return
+
+        # Check for pre-market briefing time (6:15 AM PT)
+        brief_hour, brief_min = map(int, self.premarket_briefing_time.split(':'))
+        brief_datetime = now_pt.replace(hour=brief_hour, minute=brief_min, second=0, microsecond=0)
+        time_diff = abs((now_pt - brief_datetime).total_seconds())
+
+        if time_diff < 300:  # Within 5 minutes
+            # Check if already briefed today
+            if self.last_premarket_briefing:
+                last_brief_pt = self.last_premarket_briefing.astimezone(pacific_tz) if self.last_premarket_briefing.tzinfo else pacific_tz.localize(self.last_premarket_briefing)
+                if last_brief_pt.date() == today:
+                    return  # Already briefed today
+
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("[PRE-MARKET BRIEFING] Generating morning briefing and invoking strategy agent")
+            logger.info(f"   Time: {current_time_str} PT")
+            logger.info("=" * 70)
+
+            try:
+                # Generate briefing
+                briefing = self.overnight_scanner.generate_premarket_briefing()
+
+                # Get agent prompt
+                prompt = self.overnight_scanner.get_premarket_agent_prompt()
+
+                # Invoke strategy agent
+                self._invoke_strategy_agent('premarket', 'Pre-market overnight analysis', prompt_override=prompt)
+
+                self.last_premarket_briefing = datetime.now()
+                self._save_overnight_state()
+                logger.info("[PRE-MARKET BRIEFING] Complete")
+            except Exception as e:
+                logger.error(f"[PRE-MARKET BRIEFING] Error: {e}")
+
     def check_if_review_due(self) -> bool:
         """
         Check if scheduled strategic review is due
@@ -1593,6 +1709,10 @@ Focus on finding the BEST opportunities - both long AND short.
                 if not self.is_market_hours():
                     now = datetime.now(self.eastern_tz)
                     logger.info(f"Outside market hours ({now.strftime('%H:%M')} ET) - sleeping...")
+
+                    # Check overnight schedule (news scans, pre-market briefing)
+                    self._check_overnight_schedule()
+
                     time.sleep(60)  # Check every minute for market open
                     continue
 
