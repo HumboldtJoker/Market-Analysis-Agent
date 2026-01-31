@@ -77,6 +77,15 @@
     "discovery_start_time": "06:29",
     "notes": "Strategy reviews every 30 minutes to conserve tokens. Discovery every 4 hours starting 6:29 AM PT."
   },
+  "overnight_scanner": {
+    "enabled": true,
+    "overnight_scan_times": ["20:00", "02:00"],
+    "premarket_briefing_time": "06:15",
+    "news_lookback_hours": 24,
+    "earnings_lookahead_days": 14,
+    "auto_execute_premarket": true,
+    "notes": "Scans news at 8 PM and 2 AM PT. Pre-market briefing at 6:15 AM PT invokes strategy agent with overnight analysis."
+  },
   "watchlist": {
     "candidates": {},
     "scan_universe": [
