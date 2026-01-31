@@ -177,6 +177,7 @@ class ExecutionMonitor:
         # Overnight scan schedule (PT times)
         self.overnight_scan_times = ["20:00", "02:00"]  # 8 PM, 2 AM PT
         self.premarket_briefing_time = "06:15"  # 6:15 AM PT
+        self.weekend_briefing_time = "17:00"  # 5 PM PT Sunday for Monday prep
 
         logger.info(f"Strategy reviews every {self.review_interval_hours} hour(s)")
         logger.info(f"Opportunity discovery every {self.discovery_interval_hours} hours starting {self.discovery_start_time}")
@@ -1297,6 +1298,33 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 logger.info("[PRE-MARKET BRIEFING] Complete")
             except Exception as e:
                 logger.error(f"[PRE-MARKET BRIEFING] Error: {e}")
+
+        # Check for Sunday weekend briefing (5 PM PT Sunday for Monday prep)
+        if now_pt.weekday() == 6:  # Sunday
+            brief_hour, brief_min = map(int, self.weekend_briefing_time.split(':'))
+            weekend_brief_datetime = now_pt.replace(hour=brief_hour, minute=brief_min, second=0, microsecond=0)
+            time_diff = abs((now_pt - weekend_brief_datetime).total_seconds())
+
+            if time_diff < 300:  # Within 5 minutes
+                # Check if already ran today
+                last_weekend = getattr(self, 'last_weekend_briefing', None)
+                if last_weekend:
+                    last_weekend_pt = last_weekend.astimezone(pacific_tz) if last_weekend.tzinfo else pacific_tz.localize(last_weekend)
+                    if last_weekend_pt.date() == today:
+                        return
+
+                logger.info("")
+                logger.info("=" * 70)
+                logger.info("[WEEKEND BRIEFING] Generating Monday preparation briefing")
+                logger.info(f"   Time: {current_time_str} PT (Sunday)")
+                logger.info("=" * 70)
+
+                try:
+                    briefing = self.overnight_scanner.generate_weekend_briefing()
+                    self.last_weekend_briefing = datetime.now()
+                    logger.info("[WEEKEND BRIEFING] Complete - Monday brief ready")
+                except Exception as e:
+                    logger.error(f"[WEEKEND BRIEFING] Error: {e}")
 
     def check_if_review_due(self) -> bool:
         """

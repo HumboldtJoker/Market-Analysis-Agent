@@ -401,6 +401,262 @@ IMPORTANT:
 
         return prompt
 
+    def scan_weekend_news(self) -> Dict:
+        """
+        Scan news with extended 72-hour lookback for weekend coverage.
+        Covers Friday evening through Sunday for Monday preparation.
+        """
+        logger.info("[WEEKEND SCAN] Starting extended weekend news scan (72 hours)...")
+
+        held_tickers = self.get_held_tickers()
+        all_tickers = list(set(held_tickers + self.watchlist))
+
+        results = {
+            "scan_time": datetime.now().isoformat(),
+            "scan_type": "weekend",
+            "lookback_hours": 72,
+            "held_positions": held_tickers,
+            "watchlist_scanned": self.watchlist,
+            "breaking_news": [],
+            "upgrades_downgrades": [],
+            "earnings_related": [],
+            "general_news": [],
+            "sentiment_summary": {}
+        }
+
+        for ticker in all_tickers:
+            try:
+                # Extended 3-day lookback for weekend
+                news_data = get_news_sentiment(ticker, days=3)
+
+                if "error" in news_data:
+                    continue
+
+                results["sentiment_summary"][ticker] = {
+                    "overall": news_data.get("overall_sentiment", "UNKNOWN"),
+                    "positive_pct": news_data.get("sentiment_breakdown", {}).get("positive_pct", 0),
+                    "negative_pct": news_data.get("sentiment_breakdown", {}).get("negative_pct", 0),
+                    "article_count": news_data.get("articles_analyzed", 0),
+                    "is_held": ticker in held_tickers
+                }
+
+                for article in news_data.get("articles", []):
+                    title_lower = article.get("title", "").lower()
+                    article_data = {"ticker": ticker, "is_held": ticker in held_tickers, **article}
+
+                    breaking_keywords = ['breaking', 'urgent', 'alert', 'crash', 'surge',
+                                        'plunge', 'halted', 'investigation', 'sec', 'fda',
+                                        'recall', 'bankruptcy', 'merger', 'acquisition']
+                    if any(kw in title_lower for kw in breaking_keywords):
+                        article_data["urgency"] = "HIGH"
+                        results["breaking_news"].append(article_data)
+                        continue
+
+                    analyst_keywords = ['upgrade', 'downgrade', 'price target', 'rating',
+                                       'buy rating', 'sell rating', 'hold rating', 'outperform',
+                                       'underperform', 'overweight', 'underweight']
+                    if any(kw in title_lower for kw in analyst_keywords):
+                        results["upgrades_downgrades"].append(article_data)
+                        continue
+
+                    earnings_keywords = ['earnings', 'revenue', 'guidance', 'forecast',
+                                        'quarterly', 'q1', 'q2', 'q3', 'q4', 'beat', 'miss',
+                                        'eps', 'profit', 'loss']
+                    if any(kw in title_lower for kw in earnings_keywords):
+                        results["earnings_related"].append(article_data)
+                        continue
+
+                    results["general_news"].append(article_data)
+
+            except Exception as e:
+                logger.error(f"Error scanning weekend news for {ticker}: {e}")
+
+        # Save to weekend-specific file
+        weekend_news_file = self.project_dir / 'weekend_news.json'
+        with open(weekend_news_file, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        logger.info(f"[WEEKEND SCAN] Complete - Breaking: {len(results['breaking_news'])}, "
+                   f"Upgrades/Downgrades: {len(results['upgrades_downgrades'])}, "
+                   f"Earnings: {len(results['earnings_related'])}")
+
+        return results
+
+    def generate_weekend_briefing(self) -> str:
+        """
+        Generate comprehensive weekend briefing for Monday morning.
+        Aggregates Friday-Sunday news and events.
+        """
+        logger.info("[WEEKEND BRIEFING] Generating Monday preparation briefing...")
+
+        # Get extended weekend scan
+        news_data = self.scan_weekend_news()
+        calendar_data = self.get_earnings_calendar()
+
+        try:
+            portfolio = self.executor.get_portfolio_summary()
+            portfolio_value = portfolio.get('total_value', 0)
+            cash = portfolio.get('cash', 0)
+            positions = portfolio.get('positions', [])
+        except:
+            portfolio_value = 0
+            cash = 0
+            positions = []
+
+        briefing_lines = [
+            f"# Weekend Briefing - Monday {datetime.now().strftime('%Y-%m-%d')}",
+            "",
+            "## Weekend Summary (Friday-Sunday Coverage)",
+            "",
+            "## Portfolio Snapshot (Friday Close)",
+            f"- **Portfolio Value:** ${portfolio_value:,.2f}",
+            f"- **Cash:** ${cash:,.2f}",
+            f"- **Positions:** {len(positions)}",
+            "",
+        ]
+
+        # Breaking news (extended)
+        if news_data.get("breaking_news"):
+            briefing_lines.append("## WEEKEND BREAKING NEWS")
+            briefing_lines.append("")
+            for news in news_data["breaking_news"][:10]:  # Top 10 for weekend
+                held_tag = "**[HELD]**" if news.get("is_held") else "[WATCHLIST]"
+                sentiment_tag = f"[{news.get('sentiment', 'unknown').upper()}]"
+                briefing_lines.append(f"- {held_tag} **{news['ticker']}** {sentiment_tag}: {news.get('title', 'No title')}")
+                briefing_lines.append(f"  - Source: {news.get('publisher', 'Unknown')} | {news.get('published', '')}")
+            briefing_lines.append("")
+
+        # Analyst actions (weekend aggregate)
+        if news_data.get("upgrades_downgrades"):
+            briefing_lines.append("## WEEKEND ANALYST ACTIONS")
+            briefing_lines.append("")
+            for news in news_data["upgrades_downgrades"][:10]:
+                held_tag = "**[HELD]**" if news.get("is_held") else "[WATCHLIST]"
+                briefing_lines.append(f"- {held_tag} **{news['ticker']}**: {news.get('title', 'No title')}")
+            briefing_lines.append("")
+
+        # Earnings this week
+        if calendar_data.get("upcoming_earnings"):
+            briefing_lines.append("## THIS WEEK'S EARNINGS")
+            briefing_lines.append("")
+            for event in calendar_data["upcoming_earnings"][:15]:
+                held_tag = "**[HELD]**" if event.get("is_held") else "[WATCHLIST]"
+                days = event.get("days_until", "?")
+                if days <= 5:  # This week
+                    urgency = "**TODAY**" if days == 0 else (f"in {days} days")
+                    briefing_lines.append(f"- {held_tag} **{event['ticker']}**: {event.get('earnings_date', 'TBD')} ({urgency})")
+            briefing_lines.append("")
+
+        # Weekend sentiment summary
+        briefing_lines.append("## WEEKEND SENTIMENT SUMMARY (Held Positions)")
+        briefing_lines.append("")
+        held_sentiment = {k: v for k, v in news_data.get("sentiment_summary", {}).items() if v.get("is_held")}
+        if held_sentiment:
+            sorted_sentiment = sorted(held_sentiment.items(), key=lambda x: x[1].get("negative_pct", 0), reverse=True)
+            for ticker, data in sorted_sentiment:
+                overall = data.get("overall", "UNKNOWN")
+                pos_pct = data.get("positive_pct", 0)
+                neg_pct = data.get("negative_pct", 0)
+                count = data.get("article_count", 0)
+                emoji = "[+]" if "POSITIVE" in overall else ("[-]" if "NEGATIVE" in overall else "[=]")
+                briefing_lines.append(f"- {emoji} **{ticker}**: {overall} ({count} articles, +{pos_pct}%/-{neg_pct}%)")
+        else:
+            briefing_lines.append("- No weekend news for held positions")
+        briefing_lines.append("")
+
+        # Monday action items
+        briefing_lines.append("## MONDAY ACTION ITEMS")
+        briefing_lines.append("")
+
+        action_items = []
+
+        # Flag negative sentiment
+        for ticker, data in held_sentiment.items():
+            if data.get("negative_pct", 0) > 50:
+                action_items.append(f"- **REVIEW {ticker}**: High negative weekend sentiment ({data['negative_pct']}%)")
+
+        # Flag earnings this week
+        for event in calendar_data.get("upcoming_earnings", []):
+            if event.get("is_held") and event.get("days_until", 999) <= 5:
+                action_items.append(f"- **EARNINGS {event['ticker']}**: Reports in {event['days_until']} days - review position size")
+
+        # Flag breaking news on held
+        for news in news_data.get("breaking_news", []):
+            if news.get("is_held") and news.get("sentiment") == "negative":
+                action_items.append(f"- **ALERT {news['ticker']}**: Negative breaking news over weekend")
+
+        if action_items:
+            briefing_lines.extend(action_items)
+        else:
+            briefing_lines.append("- No immediate concerns from weekend news")
+            briefing_lines.append("- Standard Monday open - follow regular strategy")
+
+        briefing_lines.append("")
+        briefing_lines.append("---")
+        briefing_lines.append(f"*Generated: {datetime.now().isoformat()}*")
+
+        briefing = "\n".join(briefing_lines)
+
+        # Save to weekend briefing file
+        weekend_briefing_file = self.project_dir / 'weekend_briefing.md'
+        with open(weekend_briefing_file, 'w', encoding='utf-8') as f:
+            f.write(briefing)
+
+        logger.info(f"[WEEKEND BRIEFING] Saved to {weekend_briefing_file}")
+
+        return briefing
+
+    def get_weekend_agent_prompt(self) -> str:
+        """
+        Generate prompt for Monday morning strategy agent with weekend context.
+        """
+        briefing = self.generate_weekend_briefing()
+
+        try:
+            with open(self.project_dir / 'weekend_news.json', 'r') as f:
+                news_data = json.load(f)
+        except:
+            news_data = {}
+
+        try:
+            with open(self.events_calendar_file, 'r') as f:
+                calendar_data = json.load(f)
+        except:
+            calendar_data = {}
+
+        prompt = f"""MONDAY MORNING STRATEGY REVIEW - Weekend Developments
+
+This is the MONDAY OPEN review after the weekend. Markets have been closed since Friday.
+Review the comprehensive weekend briefing and prepare for the week ahead.
+
+## Weekend Summary (72-hour coverage)
+- Breaking news items: {len(news_data.get('breaking_news', []))}
+- Analyst upgrades/downgrades: {len(news_data.get('upgrades_downgrades', []))}
+- Earnings-related news: {len(news_data.get('earnings_related', []))}
+- Earnings this week: {len([e for e in calendar_data.get('upcoming_earnings', []) if e.get('days_until', 999) <= 5])}
+
+## Full Weekend Briefing
+{briefing}
+
+## Your Monday Tasks
+1. Review ALL weekend developments for held positions
+2. Check for any breaking news that requires immediate action at open
+3. Review earnings calendar - adjust positions for imminent reports
+4. Identify any watchlist opportunities from positive weekend news
+5. Set the week's strategic priorities based on:
+   - Earnings reports scheduled
+   - Analyst rating changes
+   - Sector trends from weekend news
+6. Execute appropriate trades via the MCP tools
+
+IMPORTANT:
+- This is MONDAY OPEN - first chance to react to 3 days of news
+- Prioritize: (1) Risk management, (2) Earnings positioning, (3) New opportunities
+- Check weekend_news.json and weekend_briefing.md for full details
+"""
+
+        return prompt
+
 
 if __name__ == "__main__":
     # Test the overnight scanner
