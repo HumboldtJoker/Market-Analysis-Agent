@@ -1300,10 +1300,15 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 logger.error(f"[PRE-MARKET BRIEFING] Error: {e}")
 
         # Check for Sunday weekend briefing (5 PM PT Sunday for Monday prep)
-        if now_pt.weekday() == 6:  # Sunday
+        is_sunday = now_pt.weekday() == 6
+        if is_sunday:
             brief_hour, brief_min = map(int, self.weekend_briefing_time.split(':'))
             weekend_brief_datetime = now_pt.replace(hour=brief_hour, minute=brief_min, second=0, microsecond=0)
             time_diff = abs((now_pt - weekend_brief_datetime).total_seconds())
+
+            # Debug logging for weekend briefing check (when near target time)
+            if time_diff < 600:  # Within 10 minutes of target
+                logger.info(f"[WEEKEND DEBUG] Sunday {current_time_str} PT | Target: {self.weekend_briefing_time} | time_diff: {time_diff:.0f}s | will_trigger: {time_diff < 300}")
 
             if time_diff < 300:  # Within 5 minutes
                 # Check if already ran today
