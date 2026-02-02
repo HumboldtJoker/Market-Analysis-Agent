@@ -1,40 +1,63 @@
-# Session Handoff - 2026-02-01 (Saturday)
+# Session Handoff - 2026-02-01 (Sunday Evening)
 
 ## Session Summary
 
-Fixed short position stacking issue and added **overnight news scanner** with **weekend briefing** for Monday preparation.
+Verified API resilience implementation was already complete, fixed weekend briefing auto-trigger issue (monitor needed restart to pick up new code).
 
 ---
 
 ## Completed Work
 
-### 1. Fixed Short Position Stacking (Critical)
-- **Problem:** Agent acknowledged stacking rule but ignored it, accumulated -1634 M shares (should be max $1000)
-- **Solution:** Added hard-coded position blocking in `execution_monitor.py`
-  - `_get_existing_short_tickers()` detects current shorts
-  - Prompt now includes explicit "HARD BLOCK" when at max positions
-  - Logs `[SHORT BLOCKING] Existing shorts: ['M', 'MPW'] (2/2)` before each review
+### 1. API Resilience (Already Implemented - Verified)
+- **Retry logic**: 3 attempts with exponential backoff (5s, 15s, 45s)
+- **Alert system**: Writes `api_failure_alert.json`, Windows toast notification
+- **Fallback rules engine**: 4 deterministic rules when Claude unavailable:
+  - RSI > 80 + profit > 20% → trim 25%
+  - RSI > 85 + profit > 30% → trim 30%
+  - Position > 35% of portfolio → trim to 30%
+  - Cash < 8% → trim best performer 15%
+- **Config**: `fallback_rules` section in thresholds.json
 
-### 2. Closed Excess Short Positions
-- AAL: -518 shares → CLOSED
-- M: -1,634 shares → -50 shares (~$1,000)
-- MPW: -1,187 shares → -202 shares (~$1,000)
-- Total short exposure: $45,682 → $2,010
+### 2. Fixed Weekend Briefing Auto-Trigger
+- **Root cause**: Monitor (PID 50032) was started Jan 30 before weekend briefing code was added
+- **Solution**: Restarted monitor (new PID 36312) to pick up updated code
+- **Debug logging added**: Logs within 10 minutes of target time on Sundays
 
-### 3. Increased Review Interval
-- Changed from 5 minutes to 30 minutes to conserve tokens
-- ~$1.50/day vs ~$12/day API cost
+### 3. Manual Weekend Briefing Generated
+- Ran `scanner.generate_weekend_briefing()` manually
+- Output: `weekend_briefing.md` with Monday prep info
+- Key alerts: AMZN negative breaking news, KLAC negative breaking news
 
-### 4. Added Overnight News Scanner (`overnight_scanner.py`)
-- Scans news for held positions + watchlist
-- Categories: breaking news, upgrades/downgrades, earnings-related
-- Outputs: `overnight_news.json`, `events_calendar.json`, `morning_briefing.md`
+---
 
-### 5. Added Weekend Briefing
-- Extended 72-hour scan for Friday-Sunday coverage
-- Sunday 5 PM PT generation for Monday preparation
-- Outputs: `weekend_news.json`, `weekend_briefing.md`
-- Monday-specific agent prompt with week priorities
+## Current Portfolio State
+
+| Position | Type | Entry | Current | P/L |
+|----------|------|-------|---------|-----|
+| MU | Long | $332.08 | $414.88 | +24.93% |
+| META | Long | $661.15 | $716.50 | +8.37% |
+| NVDA | Long | $189.28 | $191.13 | +0.98% |
+| AMZN | Long | $239.12 | $239.30 | +0.07% |
+| M | Short | $20.11 | $20.02 | +0.46% |
+| MPW | Short | $5.02 | $5.02 | -0.04% |
+| TSM | Long | $336.88 | $330.56 | -1.88% |
+| KLAC | Long | $1,478.12 | $1,427.94 | -3.39% |
+| AMAT | Long | $333.11 | $322.32 | -3.24% |
+| INTC | Long | $48.23 | $46.47 | -3.65% |
+| LRCX | Long | $242.33 | $233.46 | -3.66% |
+| CDNS | Long | $323.53 | $296.36 | -8.40% |
+
+**Portfolio:** ~$106,487 | **Cash:** ~-$8,614 (margin) | **Short Exposure:** ~$2,015
+
+---
+
+## Running Processes
+
+- **Monitor:** PID 36312 (started Feb 1, 6:12 PM PT)
+- **Status:** Sleeping (market closed), running updated code with:
+  - API resilience features
+  - Weekend briefing with debug logging
+  - All overnight scan schedules
 
 ---
 
@@ -50,37 +73,15 @@ Fixed short position stacking issue and added **overnight news scanner** with **
 
 ---
 
-## Current Portfolio State
-
-| Position | Type | Entry | Status |
-|----------|------|-------|--------|
-| MU | Long | $332.08 | +32% (star performer) |
-| META | Long | $661.15 | +9% |
-| TSM | Long | $336.88 | -1% |
-| NVDA | Long | $189.28 | +2% |
-| M | Short | $20.01 | -50 shares (~$1,000) |
-| MPW | Short | $5.04 | -202 shares (~$1,000) |
-
-**Portfolio:** ~$108,000 | **Cash:** ~-$8,600 (margin) | **Short Exposure:** ~$2,000
-
----
-
-## Running Processes
-
-- **Monitor:** PID 50032 (since Thu 6:31 PM)
-- Sleeping on weekend, overnight scans still trigger
-- Friday 2 AM scan and 6:15 AM briefing both ran successfully
-
----
-
 ## Files Changed This Session
 
 ```
 Market-Analysis-Agent/
-├── execution_monitor.py    # Hard-coded short blocking, weekend scheduling
-├── overnight_scanner.py    # NEW: News scanner, weekend briefing
-├── thresholds.json         # 30-min interval, overnight config
-└── SESSION_HANDOFF_20260201.md  # This file
+├── execution_monitor.py      # Added weekend briefing debug logging
+├── weekend_briefing.md       # Generated Monday prep briefing
+├── morning_briefing.md       # Friday pre-market briefing
+├── overnight_state.json      # Scan/briefing timestamps
+└── SESSION_HANDOFF_20260201.md  # This file (updated)
 ```
 
 ---
@@ -88,6 +89,8 @@ Market-Analysis-Agent/
 ## Commits
 
 ```
+a07922c Add weekend briefing debug logging and generated briefings
+de27165 Add session handoff document for 2026-02-01
 5e86722 Add weekend briefing for Monday preparation
 3a6b02a Add overnight news scanner and pre-market briefing system
 b541634 Add hard-coded short position blocking and increase review interval
@@ -97,20 +100,18 @@ b541634 Add hard-coded short position blocking and increase review interval
 
 ## To Resume
 
-1. **Monitor should still be running** - check with:
+1. **Monitor is running** - check with:
    ```bash
    powershell -Command "Get-Process -Name python"
    ```
 
-2. **Weekend briefing will generate Sunday 5 PM PT**
-   - Check `weekend_briefing.md` Monday morning
+2. **Monday 6:15 AM PT**: Pre-market briefing + strategy agent invoked
+   - Will have weekend context from `weekend_briefing.md`
 
-3. **Monday 6:15 AM PT**: Strategy agent invoked with overnight + weekend context
-
-4. **If monitor died**, restart with:
+3. **If monitor died**, restart with:
    ```bash
    cd Market-Analysis-Agent
-   python execution_monitor.py
+   "C:\Users\allis\AppData\Local\Programs\Python\Python313\python.exe" execution_monitor.py
    ```
 
 ---
@@ -121,7 +122,8 @@ b541634 Add hard-coded short position blocking and increase review interval
 - [ ] Add email/SMS notifications for breaking news
 - [ ] Backtest weekend briefing accuracy vs Monday opens
 - [ ] Add position-level news sentiment tracking over time
+- [ ] Consider local LLM backup (Ollama + Mistral 7B) for Phase 2
 
 ---
 
-**Last Updated:** 2026-02-01 09:40 AM PT
+**Last Updated:** 2026-02-01 06:15 PM PT
