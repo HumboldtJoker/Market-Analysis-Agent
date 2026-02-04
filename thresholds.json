@@ -25,17 +25,25 @@
       "added": "2026-01-22"
     },
     "MU": {
-      "min_price": 405.0,
-      "reason": "BREAKING 52-week highs ($416.45) - tightened to $405 to lock +22% minimum, STRONG BUY technicals support continuation",
+      "min_price": 385.0,
+      "reason": "TRIMMED 21 shares @ $432 - reduced position, lower floor to $385 (still +16% protected). RSI 74.77 overbought but STRONG BUY trend intact",
       "trigger_review": true,
       "added": "2026-01-23",
-      "updated": "2026-01-27T11:33"
+      "updated": "2026-02-02T10:36"
     },
     "AMD": {
       "min_price": 248.0,
       "reason": "Tightened - lock in +8.8% gain, buy dip if triggered",
       "trigger_review": true,
       "added": "2026-01-26"
+    },
+    "CVS": {
+      "max_price": 82.20,
+      "reason": "SHORT POSITION - 10% stop-loss on new short @ $74.73. STRONG SELL technicals (RSI 40.8, below SMAs), weak fundamentals (111% D/E)",
+      "trigger_review": true,
+      "added": "2026-02-02",
+      "target_exit": 63.52,
+      "position_type": "short"
     }
   },
   "correlation_thresholds": {
@@ -192,6 +200,14 @@
       "notes": "If cash < 8%, trim best performer (if >25% gain) by 15%"
     },
     "notes": "Deterministic rules executed when Claude API unavailable. Provides basic portfolio protection."
+  },
+  "defensive_mode": {
+    "enabled": true,
+    "stop_loss_pct": 0.10,
+    "loss_threshold_to_close": 0.10,
+    "exit_recovery_pct": 0.01,
+    "safe_haven_options": ["SPY", "QQQ", "XLU", "XLP"],
+    "notes": "Activated by circuit breaker. Closes losing positions and shorts, invokes agent for safe haven selection, uses tighter stops. Exits when loss recovers to <1% or new trading day."
   },
   "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle"
 }

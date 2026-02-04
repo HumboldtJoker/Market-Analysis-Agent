@@ -168,6 +168,13 @@ class ExecutionMonitor:
         self.fallback_rules_enabled = True
         self._load_fallback_rules_config()
 
+        # Defensive mode state (activated by circuit breaker)
+        self.defensive_mode = False
+        self.defensive_mode_entered_at = None
+        self.defensive_stop_loss_pct = 0.10  # Tighter 10% stops in defensive mode
+        self.defensive_loss_threshold = 0.10  # Close positions down >10%
+        self.pre_defensive_portfolio_value = None
+
         # Overnight scanner for pre-market briefings
         self.overnight_scanner = OvernightScanner(executor=self.executor)
         self.last_overnight_scan = None
@@ -798,9 +805,278 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
         except Exception as e:
             logger.error(f"Could not save fallback actions: {e}")
 
+    def _enter_defensive_mode(self, daily_loss_pct: float, portfolio_value: float):
+        """
+        Enter defensive mode when circuit breaker triggers.
+
+        Instead of halting trading, we:
+        1. Run emergency news scan
+        2. Close positions down >10%
+        3. Close all shorts (they spike in selloffs)
+        4. Keep strong performers
+        5. Invoke agent to pick safe haven for excess capital
+        6. Continue monitoring with tighter stops
+        """
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("[DEFENSIVE MODE] CIRCUIT BREAKER TRIGGERED - ENTERING DEFENSIVE MODE")
+        logger.info(f"   Daily Loss: {daily_loss_pct:.2f}%")
+        logger.info(f"   Portfolio Value: ${portfolio_value:,.2f}")
+        logger.info("=" * 70)
+
+        self.defensive_mode = True
+        self.defensive_mode_entered_at = datetime.now()
+        self.pre_defensive_portfolio_value = portfolio_value
+
+        actions_taken = []
+
+        try:
+            # 1. Emergency news scan
+            logger.info("[DEFENSIVE MODE] Running emergency news scan...")
+            try:
+                news_data = self.overnight_scanner.scan_overnight_news()
+                breaking_count = len(news_data.get('breaking_news', []))
+                logger.info(f"[DEFENSIVE MODE] News scan complete - {breaking_count} breaking news items")
+            except Exception as e:
+                logger.error(f"[DEFENSIVE MODE] News scan failed: {e}")
+                news_data = {}
+
+            # 2. Get current positions and identify defensive actions
+            portfolio = self.executor.get_portfolio_summary()
+            positions = portfolio.get('positions', [])
+            total_value = portfolio['total_value']
+            cash = portfolio['cash']
+
+            positions_to_close = []
+            shorts_to_close = []
+            strong_performers = []
+
+            for pos in positions:
+                ticker = pos['ticker']
+                qty = pos['quantity']
+                pl_pct = pos.get('unrealized_pl_percent', 0)
+
+                if qty < 0:  # Short position
+                    shorts_to_close.append({
+                        'ticker': ticker,
+                        'qty': abs(qty),
+                        'pl_pct': pl_pct,
+                        'value': abs(pos.get('market_value', 0))
+                    })
+                elif pl_pct < -self.defensive_loss_threshold * 100:  # Down >10%
+                    positions_to_close.append({
+                        'ticker': ticker,
+                        'qty': qty,
+                        'pl_pct': pl_pct,
+                        'value': pos.get('market_value', 0)
+                    })
+                elif pl_pct > 5:  # Strong performers (>5% gain)
+                    strong_performers.append({
+                        'ticker': ticker,
+                        'qty': qty,
+                        'pl_pct': pl_pct,
+                        'value': pos.get('market_value', 0)
+                    })
+
+            # 3. Close losing positions (down >10%)
+            for pos in positions_to_close:
+                logger.info(f"[DEFENSIVE MODE] Closing losing position: {pos['ticker']} ({pos['pl_pct']:.1f}%)")
+                try:
+                    self.executor.execute_order(pos['ticker'], 'SELL', int(pos['qty']), 'market')
+                    actions_taken.append(f"Closed {pos['ticker']} (down {abs(pos['pl_pct']):.1f}%)")
+                except Exception as e:
+                    logger.error(f"[DEFENSIVE MODE] Failed to close {pos['ticker']}: {e}")
+
+            # 4. Close all shorts
+            for pos in shorts_to_close:
+                logger.info(f"[DEFENSIVE MODE] Closing short: {pos['ticker']} ({pos['pl_pct']:.1f}%)")
+                try:
+                    self.executor.execute_order(pos['ticker'], 'BUY', int(pos['qty']), 'market')
+                    actions_taken.append(f"Closed short {pos['ticker']}")
+                except Exception as e:
+                    logger.error(f"[DEFENSIVE MODE] Failed to close short {pos['ticker']}: {e}")
+
+            # 5. Calculate capital for safe haven
+            # Refresh portfolio after closes
+            import time
+            time.sleep(2)  # Wait for orders to fill
+            updated_portfolio = self.executor.get_portfolio_summary()
+            new_cash = updated_portfolio['cash']
+            new_total = updated_portfolio['total_value']
+
+            # Calculate opportunity reserve
+            opportunity_reserve = new_total * self.opportunity_reserve_pct
+            excess_cash = new_cash - opportunity_reserve
+
+            logger.info(f"[DEFENSIVE MODE] Post-defensive state:")
+            logger.info(f"   Cash: ${new_cash:,.2f}")
+            logger.info(f"   Opportunity Reserve: ${opportunity_reserve:,.2f}")
+            logger.info(f"   Excess for safe haven: ${excess_cash:,.2f}")
+
+            # 6. Invoke agent for safe haven selection if we have excess capital
+            if excess_cash > 1000:
+                self._invoke_defensive_agent(
+                    daily_loss_pct=daily_loss_pct,
+                    news_data=news_data,
+                    excess_cash=excess_cash,
+                    strong_performers=strong_performers,
+                    actions_taken=actions_taken
+                )
+            else:
+                logger.info("[DEFENSIVE MODE] No excess capital for safe haven - holding cash")
+
+            # 7. Log summary
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("[DEFENSIVE MODE] DEFENSIVE ACTIONS COMPLETE")
+            logger.info(f"   Positions closed: {len(positions_to_close)}")
+            logger.info(f"   Shorts closed: {len(shorts_to_close)}")
+            logger.info(f"   Strong performers kept: {len(strong_performers)}")
+            logger.info(f"   Now using {self.defensive_stop_loss_pct*100:.0f}% stops (tighter)")
+            logger.info("   Monitoring continues - will exit defensive mode when loss < 1%")
+            logger.info("=" * 70)
+
+            # Save defensive mode state
+            self._save_defensive_state(actions_taken, daily_loss_pct)
+
+        except Exception as e:
+            logger.error(f"[DEFENSIVE MODE] Error entering defensive mode: {e}", exc_info=True)
+
+    def _invoke_defensive_agent(self, daily_loss_pct: float, news_data: dict,
+                                 excess_cash: float, strong_performers: list,
+                                 actions_taken: list):
+        """Invoke strategy agent to select safe haven for excess capital."""
+
+        # Build context for agent
+        breaking_news = news_data.get('breaking_news', [])[:5]  # Top 5 breaking news
+        news_summary = "\n".join([
+            f"- {item.get('headline', 'No headline')}"
+            for item in breaking_news
+        ]) if breaking_news else "No breaking news"
+
+        strong_list = ", ".join([
+            f"{p['ticker']} (+{p['pl_pct']:.1f}%)"
+            for p in strong_performers[:5]
+        ]) if strong_performers else "None"
+
+        prompt = f"""DEFENSIVE MODE ACTIVATED - Circuit breaker triggered at {daily_loss_pct:.2f}% daily loss.
+
+MARKET CONTEXT:
+{news_summary}
+
+DEFENSIVE ACTIONS TAKEN:
+{chr(10).join(f'- {a}' for a in actions_taken) if actions_taken else '- None yet'}
+
+CURRENT STRONG PERFORMERS:
+{strong_list}
+
+CAPITAL AVAILABLE: ${excess_cash:,.2f} (after opportunity reserve)
+
+YOUR TASK:
+1. Analyze the news - is this a market-wide selloff or position-specific?
+2. Assess recovery likelihood
+3. Choose a SAFE HAVEN for the excess capital:
+   - Option A: Add to a current strong performer (less volatile, already winning)
+   - Option B: Buy SPY/QQQ (broad market, diversified)
+   - Option C: Buy defensive sector (XLU utilities, XLP consumer staples)
+   - Option D: Hold cash (if expecting further downside)
+
+Execute your chosen safe haven trade. Be conservative - we're in defensive mode.
+Do NOT open any new speculative positions or shorts."""
+
+        logger.info("[DEFENSIVE MODE] Invoking strategy agent for safe haven selection...")
+        self._invoke_strategy_agent('defensive', 'Circuit breaker - safe haven selection', prompt_override=prompt)
+
+    def _check_exit_defensive_mode(self, current_portfolio_value: float) -> bool:
+        """
+        Check if we should exit defensive mode.
+
+        Exit conditions:
+        - Daily loss recovered to <1%
+        - New trading day started
+        """
+        if not self.defensive_mode:
+            return False
+
+        # Check if new trading day
+        if self.defensive_mode_entered_at:
+            now = datetime.now(self.eastern_tz)
+            entered_date = self.defensive_mode_entered_at.date()
+            if hasattr(self.defensive_mode_entered_at, 'astimezone'):
+                entered_date = self.defensive_mode_entered_at.astimezone(self.eastern_tz).date()
+
+            if now.date() > entered_date:
+                logger.info("[DEFENSIVE MODE] New trading day - exiting defensive mode")
+                self._exit_defensive_mode("New trading day")
+                return True
+
+        # Check if loss recovered
+        if self.pre_defensive_portfolio_value:
+            recovery_pct = (current_portfolio_value - self.pre_defensive_portfolio_value) / self.pre_defensive_portfolio_value * 100
+            # We entered at ~2% loss, exit when recovered to <1% loss from that point
+            if recovery_pct > 1.0:
+                logger.info(f"[DEFENSIVE MODE] Loss recovered ({recovery_pct:.2f}%) - exiting defensive mode")
+                self._exit_defensive_mode(f"Loss recovered to {recovery_pct:.2f}%")
+                return True
+
+        return False
+
+    def _exit_defensive_mode(self, reason: str):
+        """Exit defensive mode and return to normal trading."""
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info(f"[DEFENSIVE MODE] EXITING DEFENSIVE MODE")
+        logger.info(f"   Reason: {reason}")
+        logger.info(f"   Duration: {datetime.now() - self.defensive_mode_entered_at if self.defensive_mode_entered_at else 'Unknown'}")
+        logger.info("   Returning to normal stop-loss levels")
+        logger.info("=" * 70)
+
+        self.defensive_mode = False
+        self.defensive_mode_entered_at = None
+        self.pre_defensive_portfolio_value = None
+
+        # Save exit state
+        try:
+            state_file = Path(__file__).parent / 'defensive_mode_state.json'
+            with open(state_file, 'w') as f:
+                json.dump({
+                    "active": False,
+                    "exited_at": datetime.now().isoformat(),
+                    "exit_reason": reason
+                }, f, indent=2)
+        except Exception as e:
+            logger.error(f"Could not save defensive mode exit state: {e}")
+
+    def _save_defensive_state(self, actions: list, daily_loss_pct: float):
+        """Save defensive mode state to file."""
+        try:
+            state_file = Path(__file__).parent / 'defensive_mode_state.json'
+            with open(state_file, 'w') as f:
+                json.dump({
+                    "active": True,
+                    "entered_at": self.defensive_mode_entered_at.isoformat() if self.defensive_mode_entered_at else None,
+                    "trigger_loss_pct": daily_loss_pct,
+                    "pre_defensive_value": self.pre_defensive_portfolio_value,
+                    "actions_taken": actions,
+                    "stop_loss_pct": self.defensive_stop_loss_pct
+                }, f, indent=2)
+            logger.info(f"[DEFENSIVE MODE] State saved to: {state_file}")
+        except Exception as e:
+            logger.error(f"Could not save defensive mode state: {e}")
+
+    def _get_current_stop_loss(self) -> float:
+        """Get the current stop-loss percentage based on mode."""
+        if self.defensive_mode:
+            return self.defensive_stop_loss_pct
+        return self.stop_loss_pct
+
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check for dip-buying opportunities on configured tickers"""
         actions = []
+
+        # Skip if in defensive mode - no new buys allowed
+        if self.defensive_mode:
+            return actions
 
         # Skip if dip-buying disabled or no tickers configured
         if not self.dip_buying_enabled or not self.dip_buying_tickers:
@@ -1595,6 +1871,10 @@ Focus on finding the BEST opportunities - both long AND short.
         Returns:
             Stop-loss percentage (e.g., 0.15 for -15%)
         """
+        # In defensive mode, use tighter stops for everything
+        if self.defensive_mode:
+            return self.defensive_stop_loss_pct
+
         # Check if position has specific override (for extreme beta stocks)
         if ticker in self.position_stop_losses:
             return self.position_stop_losses[ticker]
@@ -1856,11 +2136,17 @@ Focus on finding the BEST opportunities - both long AND short.
                     updated_portfolio['total_value']
                 )
 
-                if breaker_triggered:
-                    logger.error("[CIRCUIT BREAKER] TRADING HALTED!")
-                    logger.error(f"   Daily Loss: {breaker_info['daily_loss_pct']:.2f}%")
-                    logger.error("   HALTING ALL TRADING - STRATEGY AGENT REVIEW REQUIRED")
-                    break
+                if breaker_triggered and not self.defensive_mode:
+                    # Enter defensive mode instead of halting
+                    self._enter_defensive_mode(
+                        daily_loss_pct=breaker_info['daily_loss_pct'],
+                        portfolio_value=updated_portfolio['total_value']
+                    )
+                    # Continue monitoring, don't break
+
+                # Check if we should exit defensive mode
+                if self.defensive_mode:
+                    self._check_exit_defensive_mode(updated_portfolio['total_value'])
 
                 # Summary
                 if actions:
