@@ -78,9 +78,33 @@ portfolio_state.json
 last_review.json
 strategy_review_needed.json
 scheduled_review_needed.json
+api_failure_alert.json
+defensive_mode_state.json
+discovery_needed.json
+events_calendar.json
+fallback_actions.json
+last_agent_response.json
+last_discovery.json
+prior_close_state.json
+overnight_state.json
+overnight_news.json
+weekend_news.json
+morning_briefing.md
+
+# AutoInvestor - Scan results and reviews (generated at runtime)
+opportunity_discovery_scan_*.json
+opportunity_scan_results*.json
+strategy_review_*.json
+pre_market_review_*.md
+ai_ecosystem_watchlist*.json
 
 # AutoInvestor - Active trading instructions (pending execution)
 trading_instructions.json
+
+# AutoInvestor - Test/debug files
+claude_test.txt
+test_mcp_tools.js
+tests/
 
 # AutoInvestor - Historical logs (KEEP in git for audit trail)
 # trading_instructions_history/

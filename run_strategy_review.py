@@ -168,6 +168,85 @@ def check_watchlist_opportunities(thresholds, portfolio):
 
     return opportunities
 
+def scan_short_candidates(thresholds, portfolio):
+    """Scan for short-selling opportunities in bearish sectors"""
+    print("\n--- SHORT-SELLING SCAN ---")
+
+    short_config = thresholds.get('short_selling', {})
+
+    if not short_config.get('enabled', False):
+        print("\nShort selling is disabled")
+        return []
+
+    test_mode = short_config.get('test_mode', {})
+    if test_mode.get('enabled', False):
+        print(f"\n[TEST MODE] Allocation: ${test_mode.get('test_allocation_usd', 0):,.0f}")
+        print(f"Purpose: {test_mode.get('purpose', 'Learning')}")
+
+    sector_scan = short_config.get('sector_scan', {})
+    example_tickers = sector_scan.get('example_tickers', [])
+    rules = short_config.get('rules', {})
+
+    max_position_size = rules.get('max_position_size_usd', 1000)
+
+    print(f"\nScanning {len(example_tickers)} bearish sector tickers...")
+    print(f"Looking for: Below 50-day SMA, RSI < 40, bearish MACD, weak fundamentals")
+
+    # Get current short positions
+    current_shorts = [p for p in portfolio['positions'] if p.get('quantity', 0) < 0]
+    current_short_tickers = [p['ticker'] for p in current_shorts]
+
+    # Calculate current short exposure
+    total_value = portfolio.get('total_value', 0)
+    short_exposure = sum(abs(p.get('market_value', 0)) for p in current_shorts)
+    short_exposure_pct = (short_exposure / total_value * 100) if total_value > 0 else 0
+
+    print(f"\nCurrent short exposure: ${short_exposure:,.2f} ({short_exposure_pct:.1f}% of portfolio)")
+
+    short_candidates = []
+
+    for ticker in example_tickers:
+        if ticker in current_short_tickers:
+            continue  # Already short this ticker
+
+        try:
+            tech = get_technicals(ticker)
+            signal = tech.get('signal', 'N/A')
+            rsi = tech.get('rsi', 50)
+            price = tech.get('price', 0)
+            sma_50 = tech.get('sma50', 0)
+
+            # Short criteria: SELL/STRONG SELL signal + RSI < 40 + below 50-day SMA
+            is_bearish_signal = signal in ['SELL', 'STRONG SELL']
+            is_weak_rsi = rsi < 40
+            is_below_sma = price < sma_50 if sma_50 > 0 else False
+
+            if is_bearish_signal and is_weak_rsi and is_below_sma:
+                short_candidates.append({
+                    'ticker': ticker,
+                    'signal': signal,
+                    'rsi': rsi,
+                    'price': price,
+                    'sma_50': sma_50,
+                    'below_sma_pct': ((price - sma_50) / sma_50 * 100) if sma_50 > 0 else 0,
+                    'score': (40 - rsi) + abs((price - sma_50) / sma_50 * 100)  # Higher score = weaker stock
+                })
+        except Exception as e:
+            continue  # Skip on error
+
+    # Sort by score (weakest first)
+    short_candidates.sort(key=lambda x: x['score'], reverse=True)
+
+    if short_candidates:
+        print(f"\n[OK] Found {len(short_candidates)} short candidates:")
+        for i, cand in enumerate(short_candidates[:3], 1):  # Show top 3
+            print(f"  {i}. {cand['ticker']}: {cand['signal']} (RSI: {cand['rsi']:.0f}, "
+                  f"${cand['price']:.2f}, {cand['below_sma_pct']:.1f}% below 50-SMA)")
+    else:
+        print("\nNo short candidates meeting criteria (SELL/STRONG SELL + RSI < 40 + below 50-SMA)")
+
+    return short_candidates
+
 def analyze_positions(portfolio, thresholds):
     """Analyze each position for stop-loss or profit protection triggers"""
     print("\n--- POSITION ANALYSIS ---")
@@ -197,11 +276,24 @@ def analyze_positions(portfolio, thresholds):
 
         # Check profit protection
         if ticker in profit_protections:
-            min_price = profit_protections[ticker]['min_price']
+            protection = profit_protections[ticker]
             current_price = pos.get('price', 0)
-            if current_price < min_price:
-                issues.append(f"{ticker} below profit protection (${current_price:.2f} < ${min_price:.2f})")
-                print(f"  [!] PROFIT PROTECTION TRIGGERED")
+            position_type = protection.get('position_type', 'long')
+
+            if position_type == 'short':
+                # For shorts, check max_price (stop loss when price goes up)
+                if 'max_price' in protection:
+                    max_price = protection['max_price']
+                    if current_price > max_price:
+                        issues.append(f"{ticker} SHORT above stop-loss (${current_price:.2f} > ${max_price:.2f})")
+                        print(f"  [!] SHORT STOP-LOSS TRIGGERED")
+            else:
+                # For longs, check min_price (stop loss when price goes down)
+                if 'min_price' in protection:
+                    min_price = protection['min_price']
+                    if current_price < min_price:
+                        issues.append(f"{ticker} below profit protection (${current_price:.2f} < ${min_price:.2f})")
+                        print(f"  [!] PROFIT PROTECTION TRIGGERED")
 
         # Get technicals
         try:
@@ -218,7 +310,7 @@ def analyze_positions(portfolio, thresholds):
 
     return issues
 
-def make_decision(alert, portfolio, capital_mgmt, opportunities, position_issues, correlation, sectors):
+def make_decision(alert, portfolio, capital_mgmt, opportunities, short_candidates, position_issues, correlation, sectors):
     """Decide on action based on analysis"""
     print("\n" + "="*70)
     print("STRATEGIC DECISION")
@@ -229,58 +321,91 @@ def make_decision(alert, portfolio, capital_mgmt, opportunities, position_issues
         print("\n[!] URGENT ISSUES DETECTED:")
         for issue in position_issues:
             print(f"  - {issue}")
-        return "DEFENSIVE", "Address urgent position issues"
+        return "DEFENSIVE", "Address urgent position issues", None
 
     # Check capital management
     if capital_mgmt['on_margin']:
         print("\n[INFO] ON MARGIN - Priority: clear margin before new positions")
-        return "HOLD", "Clear margin first"
+        return "HOLD", "Clear margin first", None
 
     if not capital_mgmt['reserve_met']:
         print("\n[INFO] Below reserve target - avoid new positions")
-        return "HOLD", "Build reserve"
+        return "HOLD", "Build reserve", None
 
     # Check if we have deployable capital
     available = capital_mgmt['available_to_deploy']
 
     if available < 1000:
         print(f"\n[INFO] Limited deployable capital (${available:.2f})")
-        return "HOLD", "Insufficient capital for new positions"
+        # But we can still consider shorts which don't require cash (only margin)
+        if short_candidates:
+            print(f"\n[OK] {len(short_candidates)} short candidates available")
+            return "SHORT", "Execute short trades (test mode)", short_candidates
+        return "HOLD", "Insufficient capital for new positions", None
 
-    # Check for opportunities
+    # Prioritize long opportunities, but also consider shorts
+    actions = []
     if opportunities:
-        print(f"\n[OK] {len(opportunities)} opportunities available")
+        print(f"\n[OK] {len(opportunities)} long opportunities available")
         print(f"[OK] ${available:,.2f} available to deploy")
-        return "REDEPLOY", f"Deploy to opportunities with ${available:,.2f} available"
+        actions.append(("LONG", opportunities))
+
+    if short_candidates:
+        print(f"\n[OK] {len(short_candidates)} short candidates available")
+        actions.append(("SHORT", short_candidates))
+
+    if actions:
+        return "MIXED", f"Execute both long and short trades", actions
 
     print("\n[OK] Portfolio healthy, no urgent actions needed")
-    return "HOLD", "Portfolio in good shape"
+    return "HOLD", "Portfolio in good shape", None
 
-def execute_decision(decision, reason, opportunities, capital_mgmt, portfolio):
+def execute_decision(decision, reason, data, capital_mgmt, portfolio, thresholds):
     """Execute the decided action"""
     print(f"\nDecision: {decision}")
     print(f"Reason: {reason}")
 
     trades = []
 
-    if decision == "REDEPLOY" and opportunities:
-        available = capital_mgmt['available_to_deploy']
+    # Handle MIXED decision (both longs and shorts)
+    if decision == "MIXED" and data:
+        for action_type, candidates in data:
+            if action_type == "LONG":
+                trades.extend(execute_long_trades(candidates, capital_mgmt, portfolio))
+            elif action_type == "SHORT":
+                trades.extend(execute_short_trades(candidates, portfolio, thresholds))
 
-        # Pick top opportunity
-        top_opp = opportunities[0]
-        ticker = top_opp['ticker']
-        price = top_opp['price']
+    # Handle SHORT-only decision
+    elif decision == "SHORT" and data:
+        trades.extend(execute_short_trades(data, portfolio, thresholds))
 
-        # Calculate quantity (use ~90% of available to keep buffer)
-        deploy_amount = available * 0.9
-        quantity = int(deploy_amount / price)
+    # Handle legacy REDEPLOY decision (backwards compat)
+    elif decision == "REDEPLOY" and data:
+        trades.extend(execute_long_trades(data, capital_mgmt, portfolio))
 
-        if quantity > 0:
-            print(f"\n[TRADE] Executing: BUY {quantity} shares of {ticker} @ ${price:.2f}")
-            print(f"   Deploy amount: ${quantity * price:,.2f}")
+    return trades
 
-            # Check correlation impact before executing
-            current_tickers = [p['ticker'] for p in portfolio['positions']]
+def execute_long_trades(opportunities, capital_mgmt, portfolio):
+    """Execute long (BUY) trades"""
+    trades = []
+    available = capital_mgmt['available_to_deploy']
+
+    # Pick top opportunity
+    top_opp = opportunities[0]
+    ticker = top_opp['ticker']
+    price = top_opp['price']
+
+    # Calculate quantity (use ~90% of available to keep buffer)
+    deploy_amount = available * 0.9
+    quantity = int(deploy_amount / price)
+
+    if quantity > 0:
+        print(f"\n[TRADE] Executing: BUY {quantity} shares of {ticker} @ ${price:.2f}")
+        print(f"   Deploy amount: ${quantity * price:,.2f}")
+
+        # Check correlation impact before executing
+        current_tickers = [p['ticker'] for p in portfolio['positions'] if p.get('quantity', 0) > 0]
+        if current_tickers:
             test_correlation = get_correlation(current_tickers + [ticker])
 
             print(f"\n   Pre-trade correlation check:")
@@ -290,25 +415,110 @@ def execute_decision(decision, reason, opportunities, capital_mgmt, portfolio):
             if test_correlation['avg_correlation'] > 0.75:
                 print(f"   [!] WARNING: Adding {ticker} would push correlation above 0.75")
                 print(f"   Skipping trade to maintain diversification")
-                return []
+                return trades
+
+        try:
+            result = execute_order(
+                ticker=ticker,
+                action='BUY',
+                quantity=quantity,
+                order_type='market',
+                mode='alpaca'
+            )
+
+            if result.get('success'):
+                print(f"   [OK] Trade executed successfully")
+                trades.append({
+                    'ticker': ticker,
+                    'action': 'BUY',
+                    'quantity': quantity,
+                    'price': price
+                })
+            else:
+                print(f"   [ERROR] Trade failed: {result.get('error')}")
+        except Exception as e:
+            print(f"   [ERROR] Trade failed: {str(e)}")
+
+    return trades
+
+def execute_short_trades(short_candidates, portfolio, thresholds):
+    """Execute short (SHORT) trades"""
+    trades = []
+
+    short_config = thresholds.get('short_selling', {})
+    test_mode = short_config.get('test_mode', {})
+    rules = short_config.get('rules', {})
+
+    max_position_size = rules.get('max_position_size_usd', 1000)
+    max_total_positions = rules.get('max_total_short_positions', 2)
+    test_allocation = test_mode.get('test_allocation_usd', 2500)
+
+    # Calculate current short exposure
+    current_shorts = [p for p in portfolio['positions'] if p.get('quantity', 0) < 0]
+    current_short_tickers = [p['ticker'] for p in current_shorts]
+    current_short_count = len(current_shorts)
+    short_exposure = sum(abs(p.get('market_value', 0)) for p in current_shorts)
+
+    remaining_allocation = test_allocation - short_exposure
+
+    print(f"\n[SHORT TRADES]")
+    print(f"   Max short positions: {max_total_positions}")
+    print(f"   Current short positions: {current_short_count}")
+    print(f"   Test allocation: ${test_allocation:,.0f}")
+    print(f"   Current short exposure: ${short_exposure:,.2f}")
+    print(f"   Remaining allocation: ${remaining_allocation:,.2f}")
+
+    # HARD BLOCK: Check if at maximum short positions
+    if current_short_count >= max_total_positions:
+        print(f"\n   [HARD BLOCK] Already at maximum short positions ({current_short_count}/{max_total_positions})")
+        print(f"   NO NEW SHORTS ALLOWED. Only managing existing shorts.")
+        return trades
+
+    # Calculate how many new shorts we can open
+    max_new_shorts = max_total_positions - current_short_count
+
+    # Execute up to max_new_shorts trades
+    for i, candidate in enumerate(short_candidates[:max_new_shorts]):
+        if remaining_allocation < 500:  # Need at least $500 to short
+            print(f"\n   Insufficient allocation remaining")
+            break
+
+        ticker = candidate['ticker']
+        price = candidate['price']
+
+        # SAFETY CHECK: Don't add to existing short positions
+        if ticker in current_short_tickers:
+            print(f"\n   [SKIP] Already have short position in {ticker} - not stacking")
+            continue
+
+        # Calculate quantity based on max position size
+        position_size = min(max_position_size, remaining_allocation)
+        quantity = int(position_size / price)
+
+        if quantity > 0:
+            print(f"\n[TRADE {i+1}] Executing: SHORT {quantity} shares of {ticker} @ ${price:.2f}")
+            print(f"   Position size: ${quantity * price:,.2f}")
+            print(f"   Reason: {candidate['signal']}, RSI {candidate['rsi']:.0f}, "
+                  f"{candidate['below_sma_pct']:.1f}% below 50-SMA")
 
             try:
                 result = execute_order(
                     ticker=ticker,
-                    action='BUY',
+                    action='SHORT',
                     quantity=quantity,
                     order_type='market',
                     mode='alpaca'
                 )
 
                 if result.get('success'):
-                    print(f"   [OK] Trade executed successfully")
+                    print(f"   [OK] Short trade executed successfully")
                     trades.append({
                         'ticker': ticker,
-                        'action': 'BUY',
+                        'action': 'SHORT',
                         'quantity': quantity,
                         'price': price
                     })
+                    remaining_allocation -= quantity * price
                 else:
                     print(f"   [ERROR] Trade failed: {result.get('error')}")
             except Exception as e:
@@ -363,14 +573,17 @@ def main():
     # Step 7: Check watchlist
     opportunities = check_watchlist_opportunities(thresholds, portfolio)
 
+    # Step 7b: Scan for short candidates
+    short_candidates = scan_short_candidates(thresholds, portfolio)
+
     # Step 8: Make decision
-    decision, reason = make_decision(
-        alert, portfolio, capital_mgmt, opportunities,
+    decision, reason, data = make_decision(
+        alert, portfolio, capital_mgmt, opportunities, short_candidates,
         position_issues, correlation, sectors
     )
 
     # Step 9: Execute
-    trades = execute_decision(decision, reason, opportunities, capital_mgmt, portfolio)
+    trades = execute_decision(decision, reason, data, capital_mgmt, portfolio, thresholds)
 
     # Step 10: Update alert
     update_alert(filename, alert, decision, reason, trades)

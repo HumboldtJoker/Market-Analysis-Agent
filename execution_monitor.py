@@ -175,6 +175,12 @@ class ExecutionMonitor:
         self.defensive_loss_threshold = 0.10  # Close positions down >10%
         self.pre_defensive_portfolio_value = None
 
+        # Overnight gap protection
+        self.prior_close_value = None
+        self.overnight_gap_threshold = 0.02  # 2% gap triggers defensive mode
+        self.gap_check_done_today = False
+        self._load_prior_close()
+
         # Overnight scanner for pre-market briefings
         self.overnight_scanner = OvernightScanner(executor=self.executor)
         self.last_overnight_scan = None
@@ -1069,6 +1075,80 @@ Do NOT open any new speculative positions or shorts."""
         if self.defensive_mode:
             return self.defensive_stop_loss_pct
         return self.stop_loss_pct
+
+    def _load_prior_close(self):
+        """Load prior day's closing portfolio value from file."""
+        try:
+            state_file = Path(__file__).parent / 'prior_close_state.json'
+            if state_file.exists():
+                with open(state_file, 'r') as f:
+                    data = json.load(f)
+                    self.prior_close_value = data.get('prior_close_value')
+                    close_date = data.get('close_date')
+                    logger.info(f"Loaded prior close: ${self.prior_close_value:,.2f} from {close_date}")
+        except Exception as e:
+            logger.warning(f"Could not load prior close state: {e}")
+            self.prior_close_value = None
+
+    def _save_prior_close(self, portfolio_value: float):
+        """Save current portfolio value as prior close for next day's gap check."""
+        try:
+            state_file = Path(__file__).parent / 'prior_close_state.json'
+            with open(state_file, 'w') as f:
+                json.dump({
+                    "prior_close_value": portfolio_value,
+                    "close_date": datetime.now().strftime("%Y-%m-%d"),
+                    "close_time": datetime.now().isoformat()
+                }, f, indent=2)
+            self.prior_close_value = portfolio_value
+            logger.info(f"[MARKET CLOSE] Saved prior close: ${portfolio_value:,.2f}")
+        except Exception as e:
+            logger.error(f"Could not save prior close state: {e}")
+
+    def _check_overnight_gap(self, current_portfolio_value: float) -> bool:
+        """
+        Check for overnight gap at market open.
+
+        If portfolio opens down more than threshold from prior close,
+        trigger defensive mode immediately.
+
+        Returns:
+            True if gap protection triggered, False otherwise
+        """
+        # Only check once per day, at/near market open
+        if self.gap_check_done_today:
+            return False
+
+        # Need prior close to compare
+        if not self.prior_close_value:
+            logger.info("[GAP CHECK] No prior close available - skipping gap check")
+            self.gap_check_done_today = True
+            return False
+
+        # Calculate overnight gap
+        gap_pct = (current_portfolio_value - self.prior_close_value) / self.prior_close_value
+
+        logger.info(f"[GAP CHECK] Prior close: ${self.prior_close_value:,.2f} | Current: ${current_portfolio_value:,.2f} | Gap: {gap_pct*100:.2f}%")
+
+        self.gap_check_done_today = True
+
+        # Check if gap exceeds threshold (negative = gap down)
+        if gap_pct < -self.overnight_gap_threshold:
+            logger.warning(f"[GAP PROTECTION] Overnight gap of {gap_pct*100:.2f}% exceeds -{self.overnight_gap_threshold*100:.0f}% threshold!")
+
+            # Trigger defensive mode
+            self._enter_defensive_mode(
+                daily_loss_pct=abs(gap_pct) * 100,
+                portfolio_value=current_portfolio_value
+            )
+            return True
+
+        logger.info(f"[GAP CHECK] Gap within acceptable range - no action needed")
+        return False
+
+    def _reset_daily_gap_check(self):
+        """Reset the gap check flag for a new trading day."""
+        self.gap_check_done_today = False
 
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check for dip-buying opportunities on configured tickers"""
@@ -2021,6 +2101,23 @@ Focus on finding the BEST opportunities - both long AND short.
                 # Check if market hours
                 if not self.is_market_hours():
                     now = datetime.now(self.eastern_tz)
+
+                    # If we were just in market hours, save prior close
+                    if self.check_count > 0 and not self.gap_check_done_today:
+                        # We just exited market hours - this shouldn't happen normally
+                        # But handle gracefully
+                        pass
+                    elif self.check_count > 0:
+                        # Market just closed - save portfolio value for tomorrow's gap check
+                        try:
+                            portfolio = self.executor.get_portfolio_summary()
+                            self._save_prior_close(portfolio['total_value'])
+                            # Reset for next day
+                            self._reset_daily_gap_check()
+                            self.check_count = 0
+                        except Exception as e:
+                            logger.error(f"Could not save prior close: {e}")
+
                     logger.info(f"Outside market hours ({now.strftime('%H:%M')} ET) - sleeping...")
 
                     # Check overnight schedule (news scans, pre-market briefing)
@@ -2048,6 +2145,14 @@ Focus on finding the BEST opportunities - both long AND short.
                     logger.info("No positions to monitor")
                     time.sleep(self.check_interval)
                     continue
+
+                # Check for overnight gap on first check of the day
+                if self.check_count == 1 or not self.gap_check_done_today:
+                    gap_triggered = self._check_overnight_gap(portfolio['total_value'])
+                    if gap_triggered:
+                        # Defensive mode entered, refresh portfolio after defensive trades
+                        portfolio = self.executor.get_portfolio_summary()
+                        positions = portfolio['positions']
 
                 # Fetch current prices
                 logger.info("Fetching current prices...")

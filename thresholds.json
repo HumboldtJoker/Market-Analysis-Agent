@@ -44,6 +44,22 @@
       "added": "2026-02-02",
       "target_exit": 63.52,
       "position_type": "short"
+    },
+    "UAL": {
+      "max_price": 120.73,
+      "reason": "SHORT POSITION - 10% stop-loss on new short @ $109.75. STRONG SELL (75% bearish): RSI 48.59, bearish MACD (-0.30), below 20-SMA, below middle BB",
+      "trigger_review": true,
+      "added": "2026-02-04",
+      "target_exit": 93.29,
+      "position_type": "short"
+    },
+    "AAL": {
+      "max_price": 15.55,
+      "reason": "SHORT POSITION - 10% stop-loss on short @ $14.14. Currently showing bullish momentum (+3.14% today), analyst consensus BUY with $17.66 target. Monitor closely.",
+      "trigger_review": true,
+      "added": "2026-02-04",
+      "target_exit": 11.99,
+      "position_type": "short"
     }
   },
   "correlation_thresholds": {
@@ -208,6 +224,11 @@
     "exit_recovery_pct": 0.01,
     "safe_haven_options": ["SPY", "QQQ", "XLU", "XLP"],
     "notes": "Activated by circuit breaker. Closes losing positions and shorts, invokes agent for safe haven selection, uses tighter stops. Exits when loss recovers to <1% or new trading day."
+  },
+  "overnight_gap_protection": {
+    "enabled": true,
+    "gap_threshold_pct": 0.02,
+    "notes": "If portfolio opens down >2% from prior close, immediately trigger defensive mode. Protects against overnight gaps that bypass intraday circuit breaker."
   },
   "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle"
 }
