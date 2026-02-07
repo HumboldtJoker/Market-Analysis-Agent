@@ -364,11 +364,12 @@
     "recovery_threshold_pct": 0.25,
     "max_rotation_allocation_pct": 0.25,
     "vice_index": {
-      "tickers": ["MO", "PM", "BTI", "STZ", "TAP", "LVS", "MGM", "WYNN", "CZR", "DKNG"],
+      "tickers": ["MO", "PM", "BTI", "STZ", "TAP", "LVS", "MGM", "WYNN", "CZR", "DKNG", "SWBI", "RGR", "VSTO"],
       "categories": {
         "tobacco": ["MO", "PM", "BTI"],
         "alcohol": ["STZ", "TAP"],
-        "gambling": ["LVS", "MGM", "WYNN", "CZR", "DKNG"]
+        "gambling": ["LVS", "MGM", "WYNN", "CZR", "DKNG"],
+        "firearms": ["SWBI", "RGR", "VSTO"]
       },
       "notes": "Sin stocks tend to be defensive during tech selloffs. Low correlation to growth."
     },
