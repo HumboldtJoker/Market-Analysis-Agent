@@ -192,6 +192,13 @@ class ExecutionMonitor:
         self.premarket_briefing_time = "06:15"  # 6:15 AM PT
         self.weekend_briefing_time = "17:00"  # 5 PM PT Sunday for Monday prep
 
+        # Rotation trigger state (vice index rotation during tech selloffs)
+        self.rotation_mode = False
+        self.rotation_entered_at = None
+        self.rotation_trigger_threshold = 0.40  # 40% STRONG SELL triggers rotation
+        self.rotation_recovery_threshold = 0.25  # 25% STRONG BUY exits rotation
+        self._load_rotation_state()
+
         logger.info(f"Strategy reviews every {self.review_interval_hours} hour(s)")
         logger.info(f"Opportunity discovery every {self.discovery_interval_hours} hours starting {self.discovery_start_time}")
 
@@ -1150,6 +1157,183 @@ Do NOT open any new speculative positions or shorts."""
         """Reset the gap check flag for a new trading day."""
         self.gap_check_done_today = False
 
+    def _load_rotation_state(self):
+        """Load rotation mode state from file."""
+        try:
+            state_file = Path(__file__).parent / 'rotation_state.json'
+            if state_file.exists():
+                with open(state_file, 'r') as f:
+                    data = json.load(f)
+                    self.rotation_mode = data.get('rotation_mode', False)
+                    if data.get('rotation_entered_at'):
+                        self.rotation_entered_at = datetime.fromisoformat(data['rotation_entered_at'])
+                    if self.rotation_mode:
+                        logger.info(f"Loaded rotation state: ACTIVE since {self.rotation_entered_at}")
+        except Exception as e:
+            logger.warning(f"Could not load rotation state: {e}")
+            self.rotation_mode = False
+
+    def _save_rotation_state(self):
+        """Save rotation mode state to file."""
+        try:
+            state_file = Path(__file__).parent / 'rotation_state.json'
+            data = {
+                'rotation_mode': self.rotation_mode,
+                'rotation_entered_at': self.rotation_entered_at.isoformat() if self.rotation_entered_at else None,
+                'last_updated': datetime.now().isoformat()
+            }
+            with open(state_file, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Could not save rotation state: {e}")
+
+    def _check_rotation_trigger(self, positions: List[Dict]) -> Dict:
+        """
+        Check if rotation trigger conditions are met.
+        Returns dict with rotation status and signal breakdown.
+        """
+        if not self.thresholds.get('rotation_trigger', {}).get('enabled', False):
+            return {'triggered': False, 'reason': 'Rotation trigger disabled'}
+
+        rotation_config = self.thresholds.get('rotation_trigger', {})
+        trigger_threshold = rotation_config.get('strong_sell_threshold_pct', 0.40)
+        recovery_threshold = rotation_config.get('recovery_threshold_pct', 0.25)
+
+        # Count signals from positions
+        total_positions = len([p for p in positions if p.get('quantity', 0) > 0])  # Long positions only
+        if total_positions == 0:
+            return {'triggered': False, 'reason': 'No positions to evaluate'}
+
+        # Get technical signals for each position
+        strong_sell_count = 0
+        strong_buy_count = 0
+        signals = {}
+
+        for pos in positions:
+            if pos.get('quantity', 0) <= 0:  # Skip shorts
+                continue
+            ticker = pos.get('ticker')
+            try:
+                from autoinvestor_api import get_technical_indicators
+                tech = get_technical_indicators(ticker)
+                signal = tech.get('signal', 'HOLD')
+                signals[ticker] = signal
+
+                if signal in ['STRONG SELL', 'SELL']:
+                    strong_sell_count += 1
+                elif signal in ['STRONG BUY', 'BUY']:
+                    strong_buy_count += 1
+            except Exception as e:
+                signals[ticker] = 'UNKNOWN'
+
+        strong_sell_pct = strong_sell_count / total_positions if total_positions > 0 else 0
+        strong_buy_pct = strong_buy_count / total_positions if total_positions > 0 else 0
+
+        result = {
+            'total_positions': total_positions,
+            'strong_sell_count': strong_sell_count,
+            'strong_buy_count': strong_buy_count,
+            'strong_sell_pct': strong_sell_pct,
+            'strong_buy_pct': strong_buy_pct,
+            'signals': signals,
+            'trigger_threshold': trigger_threshold,
+            'recovery_threshold': recovery_threshold
+        }
+
+        # Check if we should enter rotation mode
+        if not self.rotation_mode and strong_sell_pct >= trigger_threshold:
+            result['triggered'] = True
+            result['action'] = 'ENTER_ROTATION'
+            result['reason'] = f"{strong_sell_pct*100:.0f}% positions STRONG SELL (threshold: {trigger_threshold*100:.0f}%)"
+            return result
+
+        # Check if we should exit rotation mode
+        if self.rotation_mode:
+            # Exit if recovery threshold met
+            if strong_buy_pct >= recovery_threshold:
+                result['triggered'] = True
+                result['action'] = 'EXIT_ROTATION'
+                result['reason'] = f"{strong_buy_pct*100:.0f}% positions STRONG BUY (recovery threshold: {recovery_threshold*100:.0f}%)"
+                return result
+
+            # Exit if max days exceeded
+            max_days = rotation_config.get('exit_conditions', {}).get('max_rotation_days', 10)
+            if self.rotation_entered_at:
+                days_in_rotation = (datetime.now() - self.rotation_entered_at).days
+                if days_in_rotation >= max_days:
+                    result['triggered'] = True
+                    result['action'] = 'EXIT_ROTATION'
+                    result['reason'] = f"Max rotation period exceeded ({days_in_rotation} days)"
+                    return result
+
+            result['triggered'] = False
+            result['reason'] = f"In rotation mode - waiting for recovery ({strong_buy_pct*100:.0f}% STRONG BUY, need {recovery_threshold*100:.0f}%)"
+            return result
+
+        result['triggered'] = False
+        result['reason'] = f"Normal mode - {strong_sell_pct*100:.0f}% STRONG SELL (threshold: {trigger_threshold*100:.0f}%)"
+        return result
+
+    def _enter_rotation_mode(self, rotation_check: Dict):
+        """Enter rotation mode - rotate from STRONG SELL tech to vice index."""
+        logger.info("=" * 70)
+        logger.info("[ROTATION MODE] ENTERING VICE INDEX ROTATION")
+        logger.info(f"   Reason: {rotation_check.get('reason', 'Unknown')}")
+        logger.info(f"   Signals: {rotation_check.get('signals', {})}")
+        logger.info("=" * 70)
+
+        self.rotation_mode = True
+        self.rotation_entered_at = datetime.now()
+        self._save_rotation_state()
+
+        # Invoke strategy agent with rotation context
+        vice_config = self.thresholds.get('rotation_trigger', {}).get('vice_index', {})
+        vice_tickers = vice_config.get('tickers', [])
+
+        rotation_prompt = f"""ROTATION MODE ACTIVATED - Tech selloff detected.
+
+{rotation_check.get('strong_sell_pct', 0)*100:.0f}% of positions showing STRONG SELL signals.
+
+ROTATION INSTRUCTIONS:
+1. Sell positions with STRONG SELL signals (preserve STRONG BUY positions)
+2. Rotate proceeds into vice index stocks: {', '.join(vice_tickers)}
+3. Max 25% of portfolio in vice stocks
+4. Prefer high-dividend names (MO, PM, BTI)
+
+Vice categories:
+- Tobacco: MO, PM, BTI (defensive, high yield)
+- Alcohol: STZ, TAP (consumer staples)
+- Gambling: LVS, MGM, WYNN, CZR, DKNG
+
+Run /strategy-review with rotation mode active."""
+
+        self._invoke_strategy_agent('rotation', rotation_prompt)
+
+    def _exit_rotation_mode(self, rotation_check: Dict):
+        """Exit rotation mode - rotate back to tech."""
+        logger.info("=" * 70)
+        logger.info("[ROTATION MODE] EXITING - Returning to tech focus")
+        logger.info(f"   Reason: {rotation_check.get('reason', 'Unknown')}")
+        logger.info("=" * 70)
+
+        self.rotation_mode = False
+        self.rotation_entered_at = None
+        self._save_rotation_state()
+
+        # Invoke strategy agent to rotate back
+        exit_prompt = f"""ROTATION MODE ENDED - Tech recovery detected.
+
+{rotation_check.get('strong_buy_pct', 0)*100:.0f}% of positions showing STRONG BUY signals.
+
+EXIT ROTATION INSTRUCTIONS:
+1. Evaluate vice index positions for exit
+2. Rotate proceeds back into AI/tech ecosystem per strategy_focus
+3. Prioritize STRONG BUY signals from watchlist
+
+Run /strategy-review to execute rotation exit."""
+
+        self._invoke_strategy_agent('rotation_exit', exit_prompt)
+
     def check_dip_buying(self, positions: List[Dict], current_prices: Dict[str, float]) -> List[Dict]:
         """Check for dip-buying opportunities on configured tickers"""
         actions = []
@@ -1839,6 +2023,23 @@ Do NOT open any new speculative positions or shorts."""
             # Update last review time (use Eastern time to match check_if_review_due)
             self.last_scheduled_review = datetime.now(self.eastern_tz).replace(tzinfo=None)
             self._save_last_review_time()
+
+            # Check rotation trigger before invoking agent
+            positions = portfolio.get('positions', [])
+            rotation_check = self._check_rotation_trigger(positions)
+
+            if rotation_check.get('triggered'):
+                action = rotation_check.get('action')
+                if action == 'ENTER_ROTATION':
+                    self._enter_rotation_mode(rotation_check)
+                    return  # Agent invoked by rotation mode
+                elif action == 'EXIT_ROTATION':
+                    self._exit_rotation_mode(rotation_check)
+                    return  # Agent invoked by rotation exit
+
+            # Log rotation status if in rotation mode
+            if self.rotation_mode:
+                logger.info(f"[ROTATION MODE] Active - {rotation_check.get('reason', '')}")
 
             # Invoke Claude strategy agent to process the review
             self._invoke_strategy_agent('scheduled')

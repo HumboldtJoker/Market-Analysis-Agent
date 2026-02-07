@@ -87,6 +87,7 @@ last_agent_response.json
 last_discovery.json
 prior_close_state.json
 overnight_state.json
+rotation_state.json
 overnight_news.json
 weekend_news.json
 morning_briefing.md

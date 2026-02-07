@@ -15,6 +15,13 @@
       "threshold": 0.03,
       "reason": "STRONG SELL signal, below SMA50, bearish MACD",
       "added": "2026-01-19"
+    },
+    "DELL": {
+      "threshold": 111.0,
+      "type": "absolute_price",
+      "reason": "Morgan Stanley PT $111 - hardware spending slowdown concern. Exit if breaks below analyst bearish target.",
+      "added": "2026-02-06",
+      "current_price": 115.39
     }
   },
   "profit_protection": {
@@ -37,29 +44,16 @@
       "trigger_review": true,
       "added": "2026-01-26"
     },
-    "CVS": {
-      "max_price": 82.20,
-      "reason": "SHORT POSITION - 10% stop-loss on new short @ $74.73. STRONG SELL technicals (RSI 40.8, below SMAs), weak fundamentals (111% D/E)",
+    "ARM": {
+      "min_price": 115.0,
+      "reason": "TIGHTENED 2026-02-06: Now +9.3% gain ($121.18 from $110.88). Lock in +4% profit. At/above upper BB = overbought (RSI 66). STRONG BUY trend intact but protect gains due to extreme beta 4.37.",
       "trigger_review": true,
-      "added": "2026-02-02",
-      "target_exit": 63.52,
-      "position_type": "short"
-    },
-    "UAL": {
-      "max_price": 120.73,
-      "reason": "SHORT POSITION - 10% stop-loss on new short @ $109.75. STRONG SELL (75% bearish): RSI 48.59, bearish MACD (-0.30), below 20-SMA, below middle BB",
-      "trigger_review": true,
-      "added": "2026-02-04",
-      "target_exit": 93.29,
-      "position_type": "short"
-    },
-    "AAL": {
-      "max_price": 15.55,
-      "reason": "SHORT POSITION - 10% stop-loss on short @ $14.14. Currently showing bullish momentum (+3.14% today), analyst consensus BUY with $17.66 target. Monitor closely.",
-      "trigger_review": true,
-      "added": "2026-02-04",
-      "target_exit": 11.99,
-      "position_type": "short"
+      "added": "2026-02-06",
+      "updated": "2026-02-06T08:04",
+      "entry_price": 110.88,
+      "target_price_1": 135.0,
+      "target_price_2": 148.0,
+      "notes": "Replaced DELL after Morgan Stanley downgrade. Semiconductor IP leader, extreme beta, HIGH conviction STRONG BUY. Consider trimming 25% if hits $128-130 resistance."
     }
   },
   "correlation_thresholds": {
@@ -111,16 +105,150 @@
     "notes": "Scans news at 8 PM and 2 AM PT. Pre-market briefing at 6:15 AM PT invokes strategy agent with overnight analysis."
   },
   "watchlist": {
-    "candidates": {},
+    "long_opportunities": {
+      "SMCI": {
+        "signal": "STRONG BUY - CURRENT HOLDING",
+        "conviction": "HIGH",
+        "entry_price": "$33-34 (ADD ON DIPS)",
+        "current_price": 33.62,
+        "technical_score": "100% bullish",
+        "rsi": 52.9,
+        "catalyst": "Above 50-SMA (+6.8%), bullish MACD crossover, positive momentum, RSI neutral",
+        "status": "HOLD & ADD - Best performing AI infrastructure play",
+        "reasoning": "Already own. Pure AI server play with confirmed bullish momentum. Near upper BB (overbought zone) but trend intact. Add on any dips to $30-31.",
+        "last_updated": "2026-02-06"
+      },
+      "INTC": {
+        "signal": "STRONG BUY - CURRENT HOLDING",
+        "conviction": "HIGH",
+        "entry_price": "$48-50 (ADD ON DIPS)",
+        "current_price": 50.17,
+        "technical_score": "75% bullish",
+        "rsi": 54.8,
+        "catalyst": "Above 50-SMA (+18.2%), bullish momentum, RSI>50, high volatility breakout",
+        "status": "HOLD & ADD - Turnaround play gaining momentum",
+        "reasoning": "Already own. Intel turnaround accelerating. Strong price action, bullish position. Slight bearish MACD but overall trend bullish. Add if dips to $47-48.",
+        "last_updated": "2026-02-06"
+      },
+      "ASML": {
+        "signal": "STRONG BUY",
+        "conviction": "HIGH",
+        "entry_price": "$1380-1410",
+        "current_price": 1404.46,
+        "technical_score": "75% bullish",
+        "rsi": 55.04,
+        "catalyst": "Above 50-SMA (+16.4%), bullish momentum RSI>50, above middle BB",
+        "status": "WAIT - Cash reserve too low",
+        "reasoning": "EUV lithography monopoly. Strong position +16.4% above 50-SMA. Recent bearish MACD crossover. BLOCKED: Only $4,453 cash (4.1%) vs 15% target. Need to rebuild reserves first.",
+        "cost": "$1,404 per share",
+        "shares_affordable": "~3 shares = $4,200 (would deplete cash)",
+        "last_updated": "2026-02-06T08:04"
+      },
+      "LRCX": {
+        "signal": "STRONG BUY",
+        "conviction": "HIGH",
+        "entry_price": "$225-230",
+        "current_price": 228.09,
+        "technical_score": "75% bullish",
+        "rsi": 52.29,
+        "catalyst": "Above 50-SMA (+18.7%), RSI neutral, above middle BB, strong uptrend",
+        "status": "WAIT - Cash reserve too low",
+        "reasoning": "Lam Research (wafer fabrication equipment). +18.7% above 50-SMA, neutral RSI (room to run). Recent bearish MACD cross. BLOCKED: Only $4,453 cash (4.1%) vs 15% target.",
+        "cost": "$228 per share",
+        "shares_affordable": "~19 shares = $4,300 (would deplete cash)",
+        "last_updated": "2026-02-06T08:04"
+      },
+      "HPE": {
+        "signal": "STRONG BUY - CURRENT HOLDING",
+        "conviction": "MEDIUM-HIGH",
+        "entry_price": "HOLD (at upper BB)",
+        "current_price": 23.41,
+        "technical_score": "75% bullish",
+        "rsi": 63.67,
+        "catalyst": "Above 50-SMA (+2.5%), bullish MACD, bullish momentum",
+        "status": "HOLD - At resistance, wait for pullback",
+        "reasoning": "Already own. AI server/infrastructure play. At/above upper BB = overbought. Don't add here. Wait for dip to $21-22 or breakout above $24.",
+        "last_updated": "2026-02-06"
+      },
+      "ARM": {
+        "signal": "STRONG BUY - CURRENT HOLDING",
+        "conviction": "MEDIUM-HIGH",
+        "entry_price": "HOLD (above entry)",
+        "current_price": 121.18,
+        "technical_score": "75% bullish",
+        "rsi": 66.0,
+        "catalyst": "Above 50-SMA (+2.2%), bullish momentum, above upper BB",
+        "status": "HOLD - Stop tightened to $115",
+        "reasoning": "Already own at $110.88. Now +9.3% gain. At/above upper BB = overbought. Stop-loss TIGHTENED to $115 (lock in +4% gain). Don't add.",
+        "note": "Consider trimming 25% if hits $128-130 (resistance)",
+        "last_updated": "2026-02-06T08:04"
+      }
+    },
+    "oversold_watch_list": {
+      "QCOM": {
+        "signal": "OVERSOLD - DO NOT BUY YET",
+        "conviction": "MEDIUM (on reversal)",
+        "entry_price": "$138-142 ONLY on bullish MACD crossover",
+        "current_price": 137.32,
+        "technical_score": "25% bullish (oversold only)",
+        "rsi": 20.2,
+        "catalyst": "EXTREME oversold RSI 20.2, -17.7% below 50-SMA, at lower BB, bearish MACD",
+        "status": "WAIT - Knife still falling",
+        "reasoning": "5G/mobile chip leader in freefall. Extreme oversold but bearish momentum intact. Could bounce 15-20% on reversal. WAIT for bullish MACD crossover + RSI>30.",
+        "last_updated": "2026-02-06"
+      },
+      "ZS": {
+        "signal": "OVERSOLD - WATCH",
+        "conviction": "MEDIUM (on reversal)",
+        "entry_price": "$168-175 on reversal confirmation",
+        "current_price": 166.73,
+        "technical_score": "50% neutral",
+        "rsi": 18.85,
+        "catalyst": "EXTREME oversold RSI 18.85, BELOW lower BB, -25.4% below 50-SMA, bearish MACD",
+        "status": "WAIT - Need confirmation",
+        "reasoning": "Zscaler (zero trust security). Extreme oversold RSI<19 + below lower BB = potential reversal. High volatility (30% BB). Wait for momentum shift.",
+        "last_updated": "2026-02-06"
+      }
+    },
+    "short_candidates": {
+      "WBD": {
+        "signal": "SHORT CANDIDATE - BEARISH",
+        "conviction": "MEDIUM",
+        "entry_price": "$28.00-29.00 (SHORT on bounce)",
+        "current_price": 27.03,
+        "technical_score": "75% bearish",
+        "rsi": 25.2,
+        "catalyst": "Below 50-SMA (-2.5%), bearish MACD, below middle BB, legacy media struggles",
+        "status": "WAIT - Too oversold, wait for bounce",
+        "reasoning": "Warner Bros Discovery (legacy media). STRONG SELL (75% bearish) but RSI 25.2 = OVERSOLD. Wait for dead cat bounce to $28-29 resistance, THEN short. Don't short at bottom.",
+        "stop_loss": "$29.70 (+10% from $27)",
+        "take_profit": "$22.95 (-15% from $27)",
+        "position_size": "$~900 (33 shares)",
+        "last_updated": "2026-02-06T08:04",
+        "note": "Currently 0/2 short positions used (CVS, UAL, AAL in thresholds but not in live portfolio)"
+      }
+    },
+    "rejected_shorts": {
+      "M": "STRONG BUY signal (75% bullish) - bullish MACD crossover, above middle BB, RSI 51.78",
+      "VFC": "STRONG BUY signal (100% bullish) - all indicators bullish, not shortable",
+      "MPW": "STRONG BUY signal (100% bullish) - bullish momentum, not shortable",
+      "SLB": "STRONG BUY signal (75% bullish) - above 50-SMA +18.6%, bullish momentum",
+      "OXY": "STRONG BUY signal (100% bullish) - all indicators bullish, not shortable",
+      "F": "HOLD (50% neutral) - mixed signals, not enough bearish conviction",
+      "GPS": "No data available",
+      "PARA": "No data available"
+    }
+  },
+  "candidates": {
     "scan_universe": [
       "NVDA", "AVGO", "MRVL", "QCOM", "INTC",
-      "SMCI", "DELL", "HPE",
+      "SMCI", "HPE",
       "ARM", "SNPS", "CDNS", "ASML", "LRCX", "AMAT", "KLAC",
       "PLTR", "SNOW", "CRWD", "PANW", "ZS",
       "MSFT", "AMZN", "ORCL", "CRM", "NOW",
       "PATH", "AI", "UPST", "S"
     ],
-    "notes": "AI ecosystem: chips, servers, equipment, cybersecurity, cloud, applications"
+    "notes": "AI ecosystem: chips, servers, equipment, cybersecurity, cloud, applications. DELL removed 2026-02-06 (Morgan Stanley downgrade)"
   },
   "short_selling": {
     "enabled": true,
@@ -229,6 +357,34 @@
     "enabled": true,
     "gap_threshold_pct": 0.02,
     "notes": "If portfolio opens down >2% from prior close, immediately trigger defensive mode. Protects against overnight gaps that bypass intraday circuit breaker."
+  },
+  "rotation_trigger": {
+    "enabled": true,
+    "strong_sell_threshold_pct": 0.40,
+    "recovery_threshold_pct": 0.25,
+    "max_rotation_allocation_pct": 0.25,
+    "vice_index": {
+      "tickers": ["MO", "PM", "BTI", "STZ", "TAP", "LVS", "MGM", "WYNN", "CZR", "DKNG"],
+      "categories": {
+        "tobacco": ["MO", "PM", "BTI"],
+        "alcohol": ["STZ", "TAP"],
+        "gambling": ["LVS", "MGM", "WYNN", "CZR", "DKNG"]
+      },
+      "notes": "Sin stocks tend to be defensive during tech selloffs. Low correlation to growth."
+    },
+    "rotation_rules": {
+      "sell_strong_sell_positions": true,
+      "keep_strong_buy_positions": true,
+      "max_vice_positions": 3,
+      "position_size_pct": 0.08,
+      "prefer_highest_dividend": true
+    },
+    "exit_conditions": {
+      "tech_recovery_pct": 0.25,
+      "max_rotation_days": 10,
+      "notes": "Exit rotation when 25% of positions flip to STRONG BUY or after 10 days max"
+    },
+    "notes": "When 40%+ of tech positions show STRONG SELL, rotate into vice stocks. Sex, drugs, and rock & roll hold up when tech tanks. Return to tech when signals improve."
   },
   "notes": "Edit this file to update thresholds - changes take effect on next monitor cycle"
 }
