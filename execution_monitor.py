@@ -99,6 +99,7 @@ class ExecutionMonitor:
         # Thresholds config file (hot-reloaded each cycle)
         self.thresholds_file = Path(__file__).parent / 'thresholds.json'
         self.thresholds_mtime = None
+        self.thresholds_config = {}  # Full config dict for rotation trigger etc.
 
         # VIX-adaptive stop-loss percentages (defaults, can be overridden by config)
         self.vix_stop_losses = {
@@ -1192,10 +1193,10 @@ Do NOT open any new speculative positions or shorts."""
         Check if rotation trigger conditions are met.
         Returns dict with rotation status and signal breakdown.
         """
-        if not self.thresholds.get('rotation_trigger', {}).get('enabled', False):
+        if not self.thresholds_config.get('rotation_trigger', {}).get('enabled', False):
             return {'triggered': False, 'reason': 'Rotation trigger disabled'}
 
-        rotation_config = self.thresholds.get('rotation_trigger', {})
+        rotation_config = self.thresholds_config.get('rotation_trigger', {})
         trigger_threshold = rotation_config.get('strong_sell_threshold_pct', 0.40)
         recovery_threshold = rotation_config.get('recovery_threshold_pct', 0.25)
 
@@ -1287,7 +1288,7 @@ Do NOT open any new speculative positions or shorts."""
         self._save_rotation_state()
 
         # Invoke strategy agent with rotation context
-        vice_config = self.thresholds.get('rotation_trigger', {}).get('vice_index', {})
+        vice_config = self.thresholds_config.get('rotation_trigger', {}).get('vice_index', {})
         vice_tickers = vice_config.get('tickers', [])
 
         rotation_prompt = f"""ROTATION MODE ACTIVATED - Tech selloff detected.
@@ -1412,6 +1413,9 @@ Run /strategy-review to execute rotation exit."""
             # Load config
             with open(self.thresholds_file, 'r') as f:
                 config = json.load(f)
+
+            # Store full config for rotation trigger and other features
+            self.thresholds_config = config
 
             # Update position-specific thresholds
             if 'position_stop_losses' in config:
