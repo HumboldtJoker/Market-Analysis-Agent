@@ -24,7 +24,7 @@ Before using AutoInvestor tools, ensure the project is accessible:
 
 ```python
 import sys
-sys.path.insert(0, r'C:\Users\allis\desktop\get rich quick scheme\Market-Analysis-Agent')
+sys.path.insert(0, r'<PATH_TO_PROJECT>')  # Update to your project path
 ```
 
 Required environment variables:

@@ -32,11 +32,11 @@ py mcp_wrapper.py technical_analysis TSLA
   "mcpServers": {
     "market-analysis-agent": {
       "command": "node",
-      "args": ["C:\\Users\\allis\\Desktop\\Get Rich Quick Scheme\\Market-Analysis-Agent\\mcp_server.js"],
+      "args": ["<PATH_TO_PROJECT>/mcp_server_fixed.js"],
       "env": {
-        "FRED_API_KEY": "f095becd93fca5e58907bbdf8be1a5cb",
-        "ALPACA_API_KEY": "PK55CHSL356IHAP5LPM5N7GDR3",
-        "ALPACA_SECRET_KEY": "5wuTUWsjjFi2abghb8mwVujHvX2d7NmhFZsBv9QPYkRc",
+        "FRED_API_KEY": "your_fred_api_key",
+        "ALPACA_API_KEY": "your_alpaca_api_key",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key",
         "ALPACA_BASE_URL": "https://paper-api.alpaca.markets/v2"
       }
     }

@@ -114,3 +114,16 @@ tests/
 
 # AutoInvestor - Temporary files
 nul
+
+# Session handoff files (internal development notes)
+SESSION*.md
+NEXT_SESSION_HANDOFF.md
+
+# Strategy reviews in subfolders
+strategy_reviews/*.json
+
+# Internal planning docs
+TODO.md
+
+# Weekend briefing (runtime generated)
+weekend_briefing.md

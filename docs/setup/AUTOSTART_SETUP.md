@@ -46,7 +46,7 @@ Leave it running in a terminal window. It will manage market hours automatically
 
 5. **Program/script:** Browse to:
    ```
-   C:\Users\allis\desktop\get rich quick scheme\market-analysis-agent\START_AUTOINVESTOR_SMART.bat
+   <PATH_TO_PROJECT>\START_AUTOINVESTOR_SMART.bat
    ```
 
 6. **Finish** - Check "Open Properties dialog"

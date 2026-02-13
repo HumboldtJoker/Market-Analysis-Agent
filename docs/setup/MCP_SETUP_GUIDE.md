@@ -57,7 +57,7 @@ ALPACA_SECRET_KEY=your_alpaca_secret_key
   "mcpServers": {
     "market-analysis-agent": {
       "command": "node",
-      "args": ["C:\\Users\\allis\\Desktop\\Get Rich Quick Scheme\\Market-Analysis-Agent\\mcp_server.js"],
+      "args": ["<PATH_TO_PROJECT>/mcp_server_fixed.js"],
       "env": {
         "ANTHROPIC_API_KEY": "your_key_here",
         "RAPIDAPI_KEY": "your_key_here",

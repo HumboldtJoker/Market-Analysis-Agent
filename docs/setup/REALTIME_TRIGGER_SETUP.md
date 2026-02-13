@@ -24,9 +24,9 @@ Create `watch_vix_alerts.ps1`:
 
 ```powershell
 # VIX Alert File Watcher - Triggers Claude Code when alert fires
-$watchPath = "C:\Users\allis\desktop\get rich quick scheme\market-analysis-agent"
+$watchPath = "<PATH_TO_PROJECT>"  # Update this to your project path
 $alertFile = "strategy_review_needed.json"
-$claudeCodePath = "C:\Users\allis\AppData\Local\Programs\Claude\Claude Code.exe"  # Adjust if needed
+$claudeCodePath = "<PATH_TO_CLAUDE_CODE>"  # e.g., "C:\Users\YourName\AppData\Local\Programs\Claude\Claude Code.exe"
 
 # Create file watcher
 $watcher = New-Object System.IO.FileSystemWatcher
@@ -104,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File watch_vix_alerts.ps1
    - **Trigger:** At startup
    - **Action:** Start program
      - **Program:** `powershell.exe`
-     - **Arguments:** `-ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\allis\desktop\get rich quick scheme\market-analysis-agent\watch_vix_alerts.ps1"`
+     - **Arguments:** `-ExecutionPolicy Bypass -WindowStyle Hidden -File "<PATH_TO_PROJECT>\watch_vix_alerts.ps1"`
    - **Settings:**
      - ☑ Allow task to be run on demand
      - ☑ If task fails, restart every 5 minutes
@@ -123,7 +123,7 @@ cd /d "%~dp0"
 
 if exist strategy_review_needed.json (
     echo VIX alert found! Opening Claude Code...
-    start "" "C:\Users\allis\AppData\Local\Programs\Claude\Claude Code.exe" "%cd%"
+    start "" "<PATH_TO_CLAUDE_CODE>" "%cd%"
     timeout /t 10
 )
 ```

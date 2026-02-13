@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy Aggressive $200k Active Trading Portfolio"""
+"""Deploy Aggressive $200k Active Trading Portfolio with SAFETY VALIDATION"""
 from order_executor import OrderExecutor
 from dotenv import load_dotenv
 import yfinance as yf
@@ -11,55 +11,16 @@ executor = OrderExecutor(mode='alpaca')
 print('='*70)
 print('DEPLOYING AGGRESSIVE $200K ACTIVE TRADING PORTFOLIO')
 print('Strategy: High-turnover, 15% payday targets, -8% stops')
+print('Mode: LEVERAGED (using margin for full $200k deployment)')
 print('='*70)
 
-# Get current portfolio
-portfolio = executor.get_portfolio_summary()
-print(f'\nStarting Portfolio Value: ${portfolio["total_value"]:,.2f}')
-print(f'Starting Cash: ${portfolio["cash"]:,.2f}')
-print(f'\nCurrent positions: {len(portfolio["positions"])}')
-for pos in portfolio['positions']:
-    print(f'  {pos["ticker"]}: {pos["quantity"]} shares @ ${pos["current_price"]:.2f}')
-
-print('\n' + '='*70)
-print('PHASE 1: EXIT OLD POSITIONS')
-print('='*70)
-
-# Exit fractional positions
-print('\n1. Exiting fractional AAPL...')
-aapl_pos = next((p for p in portfolio['positions'] if p['ticker'] == 'AAPL'), None)
-if aapl_pos and aapl_pos['quantity'] > 0:
-    result = executor.execute_order('AAPL', 'SELL', aapl_pos['quantity'], 'market')
-    print(f'   AAPL: Sold {aapl_pos["quantity"]} shares - {result["status"]}')
-    time.sleep(1)
-
-print('\n2. Exiting fractional NVDA...')
-nvda_pos = next((p for p in portfolio['positions'] if p['ticker'] == 'NVDA'), None)
-if nvda_pos and nvda_pos['quantity'] > 0:
-    result = executor.execute_order('NVDA', 'SELL', nvda_pos['quantity'], 'market')
-    print(f'   NVDA: Sold {nvda_pos["quantity"]} shares - {result["status"]}')
-    time.sleep(1)
-
-# Cancel any pending GOOGL limit orders
-print('\n3. Canceling old GOOGL limit orders...')
-try:
-    orders = executor.alpaca_client.get_orders()
-    googl_orders = [o for o in orders if o.symbol == 'GOOGL' and o.status in ['new', 'pending_new']]
-    for order in googl_orders:
-        executor.alpaca_client.cancel_order_by_id(order.id)
-        print(f'   Canceled GOOGL order: {order.id}')
-        time.sleep(1)
-except Exception as e:
-    print(f'   No GOOGL orders to cancel or error: {e}')
-
-print('\n' + '='*70)
-print('PHASE 2: CALCULATE TARGET POSITIONS')
-print('='*70)
-
-# Refresh portfolio after exits
-time.sleep(2)
-portfolio = executor.get_portfolio_summary()
-print(f'\nCash after exits: ${portfolio["cash"]:,.2f}')
+# Get current account state
+account = executor.alpaca_client.get_account()
+print(f'\nAccount State:')
+print(f'  Cash: ${float(account.cash):,.2f}')
+print(f'  Equity: ${float(account.equity):,.2f}')
+print(f'  Buying Power: ${float(account.buying_power):,.2f}')
+print(f'  Margin Multiplier: {account.multiplier}x')
 
 # Target allocations for $200k portfolio
 TARGET_ALLOCATIONS = {
@@ -74,8 +35,46 @@ TARGET_ALLOCATIONS = {
     'DDOG': 10000,    # MEDIUM - Reversal setup
 }
 
+print('\n' + '='*70)
+print('SAFETY CHECK: Validating deployment')
+print('='*70)
+
+# VALIDATE BEFORE EXECUTING
+validation = executor.validate_deployment(TARGET_ALLOCATIONS, use_margin=True)
+
+print(f'\n- Account Cash: ${validation["account_cash"]:,.2f}')
+print(f'- Account Equity: ${validation["account_equity"]:,.2f}')
+print(f'- Buying Power: ${validation["buying_power"]:,.2f}')
+print(f'- Total Deployment: ${validation["total_deployment"]:,.0f}')
+print(f'- Margin Used: ${validation["margin_used"]:,.0f} ({validation["margin_pct"]:.0f}% of equity)')
+print(f'- Cash After: ${validation["available_after"]:,.2f}')
+
+# Show warnings
+if validation["warnings"]:
+    print('\nWARNINGS:')
+    for warning in validation["warnings"]:
+        print(f'  - {warning}')
+
+# Show errors (if any)
+if validation["errors"]:
+    print('\nERRORS:')
+    for error in validation["errors"]:
+        print(f'  - {error}')
+    print('\nDEPLOYMENT BLOCKED - Fix errors above')
+    exit(1)
+
+# Confirmation
+if not validation["valid"]:
+    print('\nVALIDATION FAILED - Deployment cannot proceed')
+    exit(1)
+
+print('\nVALIDATION PASSED - Proceeding with deployment')
+
+print('\n' + '='*70)
+print('PHASE 1: FETCH CURRENT PRICES')
+print('='*70)
+
 # Get current prices
-print('\nFetching current prices...')
 prices = {}
 for ticker in TARGET_ALLOCATIONS.keys():
     try:
@@ -84,9 +83,13 @@ for ticker in TARGET_ALLOCATIONS.keys():
         print(f'  {ticker}: ${prices[ticker]:.2f}')
     except Exception as e:
         print(f'  ERROR fetching {ticker}: {e}')
+        exit(1)
 
 # Calculate target shares
-print('\nTarget positions:')
+print('\n' + '='*70)
+print('PHASE 2: CALCULATE TARGET POSITIONS')
+print('='*70)
+
 targets = {}
 total_target_value = 0
 for ticker, allocation in TARGET_ALLOCATIONS.items():
@@ -96,86 +99,83 @@ for ticker, allocation in TARGET_ALLOCATIONS.items():
         total_target_value += allocation
         print(f'  {ticker}: {target_shares:.2f} shares @ ${prices[ticker]:.2f} = ${allocation:,.0f}')
 
-target_cash = 200000 - total_target_value
+target_cash = float(account.equity) - total_target_value
 print(f'\nTotal deployment: ${total_target_value:,.0f}')
-print(f'Target cash buffer: ${target_cash:,.0f}')
+print(f'Margin utilized: ${validation["margin_used"]:,.0f}')
+print(f'Cash remaining: ${target_cash:,.0f}')
 
 print('\n' + '='*70)
-print('PHASE 3: ADJUST EXISTING POSITIONS')
+print('PHASE 3: EXECUTE ALL POSITIONS')
 print('='*70)
 
-# Check current AMD position
-amd_current = next((p['quantity'] for p in portfolio['positions'] if p['ticker'] == 'AMD'), 0)
-if amd_current > 0:
-    amd_target = targets.get('AMD', 0)
-    amd_diff = amd_target - amd_current
-    if abs(amd_diff) > 0.1:  # Only adjust if difference is meaningful
-        action = 'BUY' if amd_diff > 0 else 'SELL'
-        qty = abs(amd_diff)
-        print(f'\nAMD: Current {amd_current:.2f} shares, Target {amd_target:.2f}')
-        print(f'  {action} {qty:.2f} shares')
-        result = executor.execute_order('AMD', action, qty, 'market')
-        print(f'  Result: {result["status"]}')
-        time.sleep(1)
-    else:
-        print(f'\nAMD: Already at target ({amd_current:.2f} shares)')
-        targets.pop('AMD', None)  # Remove from new entries
-else:
-    print('\nAMD: Will enter as new position')
-
-# Check current TSM position
-tsm_current = next((p['quantity'] for p in portfolio['positions'] if p['ticker'] == 'TSM'), 0)
-if tsm_current > 0:
-    tsm_target = targets.get('TSM', 0)
-    tsm_diff = tsm_target - tsm_current
-    if abs(tsm_diff) > 0.1:
-        action = 'BUY' if tsm_diff > 0 else 'SELL'
-        qty = abs(tsm_diff)
-        print(f'\nTSM: Current {tsm_current:.2f} shares, Target {tsm_target:.2f}')
-        print(f'  {action} {qty:.2f} shares')
-        result = executor.execute_order('TSM', action, qty, 'market')
-        print(f'  Result: {result["status"]}')
-        time.sleep(1)
-    else:
-        print(f'\nTSM: Already at target ({tsm_current:.2f} shares)')
-        targets.pop('TSM', None)
-else:
-    print('\nTSM: Will enter as new position')
-
-print('\n' + '='*70)
-print('PHASE 4: ENTER NEW POSITIONS')
-print('='*70)
-
-# Enter new positions (those not already held)
-new_positions = ['MU', 'CRSP', 'COIN', 'GOOGL', 'MSFT', 'MRNA', 'DDOG']
-
-for ticker in new_positions:
-    if ticker in targets:
-        qty = targets[ticker]
-        print(f'\n{ticker}: Buying {qty:.2f} shares @ ${prices[ticker]:.2f}')
+# Execute all buys
+execution_results = []
+for ticker, qty in sorted(targets.items(), key=lambda x: TARGET_ALLOCATIONS[x[0]], reverse=True):
+    allocation = TARGET_ALLOCATIONS[ticker]
+    print(f'\n{ticker}: Buying {qty:.2f} shares @ ${prices[ticker]:.2f} (${allocation:,})')
+    try:
         result = executor.execute_order(ticker, 'BUY', qty, 'market')
-        print(f'  Result: {result["status"]}')
-        time.sleep(1)
+        execution_results.append({
+            'ticker': ticker,
+            'qty': qty,
+            'status': result['status'],
+            'allocation': allocation
+        })
+        print(f'  - Result: {result["status"]}')
+        time.sleep(1)  # Rate limit
+    except Exception as e:
+        print(f'  [ERROR] {e}')
+        execution_results.append({
+            'ticker': ticker,
+            'qty': qty,
+            'status': 'error',
+            'allocation': allocation,
+            'error': str(e)
+        })
 
 print('\n' + '='*70)
 print('DEPLOYMENT COMPLETE')
 print('='*70)
 
-# Final summary
+# Show execution summary
+print('\nExecution Summary:')
+for result in execution_results:
+    status_symbol = 'OK' if result['status'] in ['filled', 'partially_filled'] else 'FAIL'
+    print(f'  {status_symbol} {result["ticker"]}: {result["status"]} (${result["allocation"]:,})')
+
+# Final portfolio state
+print('\n' + '='*70)
+print('FINAL PORTFOLIO STATE')
+print('='*70)
+
 time.sleep(3)
 portfolio = executor.get_portfolio_summary()
-print(f'\nFinal Portfolio Value: ${portfolio["total_value"]:,.2f}')
-print(f'Cash: ${portfolio["cash"]:,.2f}')
-print(f'Positions: {len(portfolio["positions"])}')
-print('\nAll positions:')
+account = executor.alpaca_client.get_account()
+
+print(f'\nAccount:')
+print(f'  Equity: ${float(account.equity):,.2f}')
+print(f'  Cash: ${float(account.cash):,.2f}')
+print(f'  Buying Power: ${float(account.buying_power):,.2f}')
+
+print(f'\nPortfolio:')
+print(f'  Total Value: ${portfolio["total_value"]:,.2f}')
+print(f'  Positions: {len(portfolio["positions"])}')
+
+print(f'\nAll positions (sorted by size):')
 for pos in sorted(portfolio['positions'], key=lambda x: x['market_value'], reverse=True):
     pct = (pos['market_value'] / portfolio['total_value']) * 100
-    print(f'  {pos["ticker"]}: {pos["quantity"]:.2f} shares @ ${pos["current_price"]:.2f} = ${pos["market_value"]:,.2f} ({pct:.1f}%)')
+    pl_symbol = '+' if pos['unrealized_pl'] >= 0 else ''
+    print(f'  {pos["ticker"]}: {pos["quantity"]:.2f} shares @ ${pos["current_price"]:.2f}')
+    print(f'    Value: ${pos["market_value"]:,.2f} ({pct:.1f}%) | P&L: {pl_symbol}${pos["unrealized_pl"]:.2f} ({pl_symbol}{pos["unrealized_pl_percent"]:.2f}%)')
 
 print('\n' + '='*70)
-print('ACTIVE TRADING RULES:')
-print('  - Profit target: +15% (sell 50%, let 50% run)')
-print('  - Hard stops: -8% on all positions (NORMAL VIX)')
-print('  - Monitor every 5 minutes for exits/redeployment')
-print('  - Cash buffer: $35k for dip-buying opportunities')
+print('ACTIVE TRADING RULES')
 print('='*70)
+print('  Profit target: +15% (sell 50%, let 50% run to +20-30%)')
+print('  Hard stops: -8% on all positions (NORMAL VIX)')
+print('  Quick turnover: Exit if momentum breaks or RSI >85')
+print('  Monitor: Every 5 minutes for exits/redeployment')
+print(f'  Cash buffer: ${float(account.cash):,.2f} for dip-buying')
+print('='*70)
+
+print('\nDeployment successful - Ready for active trading!')
