@@ -38,8 +38,8 @@ An intelligent investment research and trading agent that uses Claude AI with Re
 
 ```bash
 # Clone the repository
-git clone https://github.com/HumboldtJoker/autoinvestor.git
-cd autoinvestor
+git clone https://github.com/HumboldtJoker/Market-Analysis-Agent.git
+cd Market-Analysis-Agent
 
 # Install dependencies
 pip install -r requirements.txt
@@ -79,7 +79,7 @@ portfolio = get_portfolio(mode='alpaca')
 print(f"Value: ${portfolio['total_value']:,.2f}")
 ```
 
-See [API_REFERENCE.md](API_REFERENCE.md) for complete documentation.
+See [API Reference](docs/API_REFERENCE.md) for complete documentation.
 
 ### Basic Usage
 
@@ -364,11 +364,11 @@ agent.tools.register(Tool(
 - [x] Position sizing and portfolio management
 - [x] Comprehensive QA validation (92/100 score)
 
-### Phase 2.5: Human-AI Collaboration (Next)
-- [ ] Collaborative dialogue mode between plan and execute phases
-- [ ] Embedded questions for human context/intuition
-- [ ] Synthesized recommendations incorporating human input
-- [ ] Augmentation over replacement design
+### Phase 2.5: Human-AI Collaboration ✓ Complete
+- [x] Collaborative dialogue mode between plan and execute phases
+- [x] Embedded questions for human context/intuition
+- [x] Synthesized recommendations incorporating human input
+- [x] Augmentation over replacement design
 
 ### Phase 3: Advanced Features (Future)
 - [ ] Backtesting framework with historical validation
@@ -386,7 +386,7 @@ agent.tools.register(Tool(
 ### Phase 4: Production Hardening (Planned)
 
 #### Memory & Context Management
-Currently using session handoff documents. Future evolution:
+Future evolution for long-term strategy tracking:
 
 1. **Structured Trade Log** (Near-term)
    - Append-only JSON-lines file with: timestamp, ticker, action, price, quantity, rationale, outcome
@@ -575,7 +575,7 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📧 Contact
 
-Questions or feedback? Open an issue or reach out to [your contact info]
+Questions or feedback? [Open an issue](https://github.com/HumboldtJoker/Market-Analysis-Agent/issues) on GitHub.
 
 ---
 
