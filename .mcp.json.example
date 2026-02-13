@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "market-analysis-agent": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./mcp_server_fixed.js"],
+      "env": {
+        "FRED_API_KEY": "your_fred_api_key_here",
+        "ALPACA_API_KEY": "your_alpaca_api_key_here",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key_here",
+        "ALPACA_BASE_URL": "https://paper-api.alpaca.markets/v2"
+      }
+    },
+    "alpaca-options": {
+      "type": "stdio",
+      "command": "path/to/alpaca-mcp-server.exe",
+      "args": ["serve"],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key_here",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key_here",
+        "ALPACA_PAPER_TRADE": "true"
+      }
+    }
+  }
+}
