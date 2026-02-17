@@ -10,50 +10,18 @@
       "Semiconductor equipment and materials"
     ]
   },
-  "position_stop_losses": {
-    "MSFT": {
-      "threshold": 0.03,
-      "reason": "STRONG SELL signal, below SMA50, bearish MACD",
-      "added": "2026-01-19"
-    },
-    "DELL": {
-      "threshold": 111.0,
-      "type": "absolute_price",
-      "reason": "Morgan Stanley PT $111 - hardware spending slowdown concern. Exit if breaks below analyst bearish target.",
-      "added": "2026-02-06",
-      "current_price": 115.39
-    }
-  },
+  "position_stop_losses": {},
   "profit_protection": {
-    "MRNA": {
-      "min_price": 48.5,
-      "reason": "Lock in gains - RSI 88 extremely overbought, ride momentum but protect +20% profit",
-      "trigger_review": true,
-      "added": "2026-01-22"
-    },
-    "MU": {
-      "min_price": 385.0,
-      "reason": "TRIMMED 21 shares @ $432 - reduced position, lower floor to $385 (still +16% protected). RSI 74.77 overbought but STRONG BUY trend intact",
-      "trigger_review": true,
-      "added": "2026-01-23",
-      "updated": "2026-02-02T10:36"
-    },
-    "AMD": {
-      "min_price": 248.0,
-      "reason": "Tightened - lock in +8.8% gain, buy dip if triggered",
-      "trigger_review": true,
-      "added": "2026-01-26"
-    },
     "ARM": {
       "min_price": 115.0,
-      "reason": "TIGHTENED 2026-02-06: Now +9.3% gain ($121.18 from $110.88). Lock in +4% profit. At/above upper BB = overbought (RSI 66). STRONG BUY trend intact but protect gains due to extreme beta 4.37.",
+      "reason": "TRIMMED 15 shares @ $129.06 (2026-02-10). Remaining 43 shares. Lock in +4% profit floor. Extreme beta 4.37 = high volatility risk.",
       "trigger_review": true,
       "added": "2026-02-06",
-      "updated": "2026-02-06T08:04",
-      "entry_price": 110.88,
+      "updated": "2026-02-10T07:36",
+      "entry_price": 113.89,
       "target_price_1": 135.0,
-      "target_price_2": 148.0,
-      "notes": "Replaced DELL after Morgan Stanley downgrade. Semiconductor IP leader, extreme beta, HIGH conviction STRONG BUY. Consider trimming 25% if hits $128-130 resistance."
+      "target_price_2": 150.0,
+      "notes": "Trimmed 25% at resistance ($128-130). Remaining position protected with $115 floor. Analyst median PT $150 = 16% upside."
     }
   },
   "correlation_thresholds": {
@@ -105,30 +73,49 @@
     "notes": "Scans news at 8 PM and 2 AM PT. Pre-market briefing at 6:15 AM PT invokes strategy agent with overnight analysis."
   },
   "watchlist": {
+    "scan_universe": [
+      "NVDA", "AVGO", "MRVL", "QCOM", "INTC",
+      "SMCI", "HPE",
+      "ARM", "SNPS", "CDNS", "ASML", "LRCX", "AMAT", "KLAC",
+      "PLTR", "SNOW", "CRWD", "PANW", "ZS",
+      "MSFT", "AMZN", "ORCL", "CRM", "NOW",
+      "PATH", "AI", "UPST", "S"
+    ],
     "long_opportunities": {
       "SMCI": {
-        "signal": "STRONG BUY - CURRENT HOLDING",
-        "conviction": "HIGH",
-        "entry_price": "$33-34 (ADD ON DIPS)",
-        "current_price": 33.62,
-        "technical_score": "100% bullish",
-        "rsi": 52.9,
-        "catalyst": "Above 50-SMA (+6.8%), bullish MACD crossover, positive momentum, RSI neutral",
-        "status": "HOLD & ADD - Best performing AI infrastructure play",
-        "reasoning": "Already own. Pure AI server play with confirmed bullish momentum. Near upper BB (overbought zone) but trend intact. Add on any dips to $30-31.",
-        "last_updated": "2026-02-06"
+        "signal": "STRONG SELL - WATCH",
+        "conviction": "MEDIUM",
+        "entry_price": "$32.40 avg (961 shares)",
+        "current_price": 30.42,
+        "technical_score": "25% bullish (75% bearish)",
+        "rsi": 48.91,
+        "catalyst": "Below 50-SMA (-3.05%), MACD bullish crossover, RSI 49 weakening. Mixed signals.",
+        "status": "HOLD - Largest position at $29.2K (-6.21% unrealized)",
+        "reasoning": "961 shares at $32.40 avg = -$1,932 unrealized loss. STRONG SELL signal (75% bearish). MACD still bullish but price below 50-SMA. CONCENTRATION RISK: 28% of portfolio.",
+        "last_updated": "2026-02-13T15:44"
       },
       "INTC": {
-        "signal": "STRONG BUY - CURRENT HOLDING",
-        "conviction": "HIGH",
-        "entry_price": "$48-50 (ADD ON DIPS)",
-        "current_price": 50.17,
-        "technical_score": "75% bullish",
-        "rsi": 54.8,
-        "catalyst": "Above 50-SMA (+18.2%), bullish momentum, RSI>50, high volatility breakout",
-        "status": "HOLD & ADD - Turnaround play gaining momentum",
-        "reasoning": "Already own. Intel turnaround accelerating. Strong price action, bullish position. Slight bearish MACD but overall trend bullish. Add if dips to $47-48.",
-        "last_updated": "2026-02-06"
+        "signal": "EXITED - STRONG SELL",
+        "conviction": "NONE",
+        "exit_price": "$47.02 (est)",
+        "exit_date": "2026-02-10T12:00",
+        "exit_reason": "STRONG SELL signal (75% bearish). Down -6.4% intraday. RSI 38, bearish MACD, breaking down below 20-SMA. Turnaround thesis failed.",
+        "exit_loss": "-$261 (-2.5%)",
+        "status": "CLOSED - Do not re-enter",
+        "reasoning": "Exited 216 shares at market. Unprofitable company burning cash, declining revenue, 102% volatility. Analyst PT $48 = no upside. Preserve capital.",
+        "last_updated": "2026-02-10T12:00"
+      },
+      "PLTR": {
+        "signal": "EXITED - STRONG SELL",
+        "conviction": "NONE",
+        "entry_price": "$138.93",
+        "exit_price": "$133.86 (est)",
+        "exit_date": "2026-02-11T12:09",
+        "exit_reason": "STRONG SELL signal (100% bearish). Down -21.86% from 50-SMA. RSI 31.76 (oversold), bearish MACD, below middle BB. Bleeding position.",
+        "exit_loss": "-$92 (-3.68%)",
+        "status": "CLOSED - Watch for re-entry on reversal",
+        "reasoning": "Exited 18 shares at market. All 4 technical indicators bearish despite analyst median PT $196.50 suggesting long-term value. Current momentum shows continued downside. May re-enter on bullish reversal confirmation.",
+        "last_updated": "2026-02-11T12:09"
       },
       "ASML": {
         "signal": "STRONG BUY",
@@ -188,67 +175,115 @@
       "QCOM": {
         "signal": "OVERSOLD - DO NOT BUY YET",
         "conviction": "MEDIUM (on reversal)",
-        "entry_price": "$138-142 ONLY on bullish MACD crossover",
-        "current_price": 137.32,
+        "entry_price": "$145-150 ONLY on bullish MACD crossover",
+        "current_price": 140.49,
         "technical_score": "25% bullish (oversold only)",
-        "rsi": 20.2,
-        "catalyst": "EXTREME oversold RSI 20.2, -17.7% below 50-SMA, at lower BB, bearish MACD",
+        "rsi": 28.77,
+        "catalyst": "OVERSOLD RSI 28.77 (below threshold), -14.45% below 50-SMA, bearish MACD with negative histogram -0.34",
         "status": "WAIT - Knife still falling",
-        "reasoning": "5G/mobile chip leader in freefall. Extreme oversold but bearish momentum intact. Could bounce 15-20% on reversal. WAIT for bullish MACD crossover + RSI>30.",
-        "last_updated": "2026-02-06"
+        "reasoning": "5G/mobile chip leader still in full downtrend. RSI 28.77 deeply oversold but MACD still bearish at -7.45. WAIT for bullish MACD crossover before entry.",
+        "last_updated": "2026-02-13T15:44"
       },
       "ZS": {
         "signal": "OVERSOLD - WATCH",
         "conviction": "MEDIUM (on reversal)",
-        "entry_price": "$168-175 on reversal confirmation",
-        "current_price": 166.73,
-        "technical_score": "50% neutral",
-        "rsi": 18.85,
-        "catalyst": "EXTREME oversold RSI 18.85, BELOW lower BB, -25.4% below 50-SMA, bearish MACD",
-        "status": "WAIT - Need confirmation",
-        "reasoning": "Zscaler (zero trust security). Extreme oversold RSI<19 + below lower BB = potential reversal. High volatility (30% BB). Wait for momentum shift.",
-        "last_updated": "2026-02-06"
+        "entry_price": "$185-195 on reversal confirmation",
+        "current_price": 176.96,
+        "technical_score": "25% bullish (oversold only)",
+        "rsi": 25.0,
+        "catalyst": "OVERSOLD RSI 25.0 (deep oversold), -17.73% below 50-SMA, extremely wide 38.35% BB bandwidth",
+        "status": "WAIT - Need MACD crossover",
+        "reasoning": "Zscaler (zero trust security). Deep oversold RSI 25 but MACD deeply negative at -14.27 with histogram -0.92. Extreme volatility. WAIT for bullish MACD crossover before entry.",
+        "last_updated": "2026-02-13T15:44"
       }
     },
     "short_candidates": {
+      "BXP": {
+        "signal": "ACTIVE SHORT - HOLD",
+        "conviction": "HIGH",
+        "entry_price": "$61.38 (16 shares)",
+        "current_price": 61.36,
+        "technical_score": "100% bearish (4/4 indicators)",
+        "rsi": 40.77,
+        "catalyst": "Below 50-SMA (-8.04%), bearish MACD with negative histogram -0.25, RSI 41, below middle BB",
+        "status": "ACTIVE - Position 1/2 (AT MAX)",
+        "reasoning": "Boston Properties (office REIT). STRONG SELL confirmed - all 4 indicators bearish. -8.04% below 50-SMA. Bearish MACD continuing with negative histogram. Thesis intact.",
+        "stop_loss": "$67.52 (+10%)",
+        "take_profit": "$52.17 (-15%)",
+        "position_size": "$982 (16 shares)",
+        "unrealized_pl": "+$0.32 (+0.03%)",
+        "last_updated": "2026-02-13T15:44"
+      },
+      "VNO": {
+        "signal": "ACTIVE SHORT - HOLD",
+        "conviction": "HIGH",
+        "entry_price": "$30.23 (33 shares)",
+        "current_price": 29.98,
+        "technical_score": "100% bearish (4/4 indicators)",
+        "rsi": 39.09,
+        "catalyst": "Below 50-SMA (-8.89%), bearish MACD with histogram -0.09, RSI 39, below middle BB",
+        "status": "ACTIVE - Position 2/2 (AT MAX)",
+        "reasoning": "Vornado Realty Trust (NYC office REIT). STRONG SELL confirmed - all 4 indicators bearish. -8.89% below 50-SMA. MACD had bullish crossover signal but turned bearish again. Thesis strengthening.",
+        "stop_loss": "$33.25 (+10%)",
+        "take_profit": "$25.70 (-15%)",
+        "position_size": "$989 (33 shares)",
+        "unrealized_pl": "+$8.25 (+0.83%)",
+        "last_updated": "2026-02-13T15:44"
+      },
+      "CVS": {
+        "signal": "COVERED - STOP HIT",
+        "conviction": "NONE",
+        "entry_price": "$74.76 (avg)",
+        "exit_price": "$78.89",
+        "exit_date": "2026-02-13T09:41",
+        "exit_reason": "COVERED: Price rallied +5% above entry. Technical flip to 75% bullish with bullish MACD crossover. Stop loss triggered.",
+        "technical_score": "Was 100% bearish, now 75% bullish",
+        "final_loss": "-$364 (-5.5%)",
+        "status": "CLOSED - Thesis invalidated",
+        "reasoning": "CVS reversed trend with bullish MACD crossover and price above 50-SMA. Short thesis no longer valid. Loss within acceptable range for learning position.",
+        "last_updated": "2026-02-13T09:41"
+      },
+      "F": {
+        "signal": "COVERED - WEAK THESIS",
+        "conviction": "NONE",
+        "entry_price": "$13.58",
+        "exit_price": "$13.62 (est)",
+        "exit_date": "2026-02-11T12:09",
+        "exit_reason": "COVERED: Only 75% bearish. Price above 50-SMA (+0.5%) contradicts short thesis. Minimal profit potential.",
+        "technical_score": "75% bearish but price above 50-SMA",
+        "final_loss": "-$2.25 (-0.33%)",
+        "status": "CLOSED - Position freed (1/2 shorts remaining)",
+        "reasoning": "Exited 50 share short at market. Technical analysis showed weakening bearish case with price above 50-SMA. Better to preserve capital and day trade capacity.",
+        "last_updated": "2026-02-11T12:09"
+      },
       "WBD": {
-        "signal": "SHORT CANDIDATE - BEARISH",
-        "conviction": "MEDIUM",
-        "entry_price": "$28.00-29.00 (SHORT on bounce)",
-        "current_price": 27.03,
-        "technical_score": "75% bearish",
-        "rsi": 25.2,
-        "catalyst": "Below 50-SMA (-2.5%), bearish MACD, below middle BB, legacy media struggles",
-        "status": "WAIT - Too oversold, wait for bounce",
-        "reasoning": "Warner Bros Discovery (legacy media). STRONG SELL (75% bearish) but RSI 25.2 = OVERSOLD. Wait for dead cat bounce to $28-29 resistance, THEN short. Don't short at bottom.",
-        "stop_loss": "$29.70 (+10% from $27)",
-        "take_profit": "$22.95 (-15% from $27)",
-        "position_size": "$~900 (33 shares)",
-        "last_updated": "2026-02-06T08:04",
-        "note": "Currently 0/2 short positions used (CVS, UAL, AAL in thresholds but not in live portfolio)"
+        "signal": "COVERED - BUYOUT RISK",
+        "conviction": "NONE",
+        "entry_price": "$27.80",
+        "exit_price": "$28.06 (market order)",
+        "exit_date": "2026-02-11T06:15",
+        "exit_reason": "COVERED: Paramount sweetened buyout offer + activist investor involvement creates significant short squeeze risk. Small -$8.32 loss acceptable to avoid asymmetric risk.",
+        "technical_score": "N/A - position closed",
+        "final_loss": "-$8.32 (-0.94%)",
+        "status": "CLOSED - Do not re-short with M&A activity",
+        "reasoning": "Exited 32 share short at market due to overnight breaking news: Paramount sweetening WBD offer + Ancora Capital building stake to oppose Netflix deal. M&A activity creates unpredictable volatility unsuitable for short positions.",
+        "last_updated": "2026-02-11T06:15"
       }
     },
     "rejected_shorts": {
-      "M": "STRONG BUY signal (75% bullish) - bullish MACD crossover, above middle BB, RSI 51.78",
+      "M": "HOLD signal (50% mixed) - bullish MACD crossover neutralized by other bearish signals",
       "VFC": "STRONG BUY signal (100% bullish) - all indicators bullish, not shortable",
-      "MPW": "STRONG BUY signal (100% bullish) - bullish momentum, not shortable",
-      "SLB": "STRONG BUY signal (75% bullish) - above 50-SMA +18.6%, bullish momentum",
-      "OXY": "STRONG BUY signal (100% bullish) - all indicators bullish, not shortable",
-      "F": "HOLD (50% neutral) - mixed signals, not enough bearish conviction",
+      "AAL": "STRONG BUY signal (75% bullish) - recent bullish MACD crossover, above 50-SMA",
+      "UAL": "STRONG BUY signal (100% bullish) - strong momentum, not shortable",
+      "F": "STRONG SELL but updated to 75% bearish - prefer CVS with 100% bearish setup",
+      "QCOM": "STRONG SELL but RSI 24.7 = extreme oversold, falling knife",
+      "ZS": "STRONG SELL but RSI 26.3 = extreme oversold, falling knife",
       "GPS": "No data available",
       "PARA": "No data available"
     }
   },
   "candidates": {
-    "scan_universe": [
-      "NVDA", "AVGO", "MRVL", "QCOM", "INTC",
-      "SMCI", "HPE",
-      "ARM", "SNPS", "CDNS", "ASML", "LRCX", "AMAT", "KLAC",
-      "PLTR", "SNOW", "CRWD", "PANW", "ZS",
-      "MSFT", "AMZN", "ORCL", "CRM", "NOW",
-      "PATH", "AI", "UPST", "S"
-    ],
-    "notes": "AI ecosystem: chips, servers, equipment, cybersecurity, cloud, applications. DELL removed 2026-02-06 (Morgan Stanley downgrade)"
+    "notes": "scan_universe moved to watchlist section (where code expects it). AI ecosystem: chips, servers, equipment, cybersecurity, cloud, applications. DELL removed 2026-02-06 (Morgan Stanley downgrade)"
   },
   "short_selling": {
     "enabled": true,

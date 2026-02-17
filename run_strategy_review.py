@@ -48,6 +48,42 @@ def load_thresholds():
     with open('thresholds.json') as f:
         return json.load(f)
 
+def normalize_portfolio(portfolio):
+    """
+    Normalize portfolio data to have consistent field names.
+    Handles both API format (shares, price, entry) and alert format (quantity, current_price, avg_cost).
+    """
+    normalized = portfolio.copy()
+
+    # Normalize positions
+    if 'positions' in normalized:
+        for pos in normalized['positions']:
+            # Normalize quantity field
+            if 'shares' in pos and 'quantity' not in pos:
+                pos['quantity'] = pos['shares']
+            elif 'quantity' in pos and 'shares' not in pos:
+                pos['shares'] = pos['quantity']
+
+            # Normalize price field
+            if 'price' in pos and 'current_price' not in pos:
+                pos['current_price'] = pos['price']
+            elif 'current_price' in pos and 'price' not in pos:
+                pos['price'] = pos['current_price']
+
+            # Normalize entry field
+            if 'entry' in pos and 'avg_cost' not in pos:
+                pos['avg_cost'] = pos['entry']
+            elif 'avg_cost' in pos and 'entry' not in pos:
+                pos['entry'] = pos['avg_cost']
+
+            # Calculate market_value if missing
+            if 'market_value' not in pos:
+                qty = pos.get('quantity', pos.get('shares', 0))
+                price = pos.get('current_price', pos.get('price', 0))
+                pos['market_value'] = qty * price
+
+    return normalized
+
 def analyze_portfolio_health(portfolio):
     """Run correlation and sector analysis"""
     print("\n--- PORTFOLIO HEALTH CHECK ---")
@@ -556,6 +592,7 @@ def main():
     # Step 3: Get current portfolio
     print("\n--- LOADING PORTFOLIO ---")
     portfolio = get_portfolio(mode='alpaca')
+    portfolio = normalize_portfolio(portfolio)  # Ensure consistent field names
     print(f"\nPortfolio Value: ${portfolio['total_value']:,.2f}")
     print(f"Cash: ${portfolio['cash']:,.2f}")
     print(f"Positions: {portfolio['num_positions']}")
