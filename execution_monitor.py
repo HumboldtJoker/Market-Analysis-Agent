@@ -492,7 +492,13 @@ Short positions: {short_count}/{max_shorts} (can open up to {max_shorts} new sho
             prompt = f"""A scheduled strategy review is due (runs every {interval_str}).
 Run /strategy-review to scan for opportunities and adjust positions as needed.
 Check portfolio_health in scheduled_review_needed.json for correlation and sector data.
-Also check the watchlist in thresholds.json for entry opportunities.
+
+**DEPLOY AVAILABLE CASH:**
+1. Check watchlist in thresholds.json for STRONG BUY opportunities (long_opportunities + oversold_watch_list)
+2. If cash > {self.opportunity_reserve_pct * 100:.0f}% reserve AND a STRONG BUY with 100% bullish score exists:
+   - Execute 1 BUY trade using excess cash (keep {self.opportunity_reserve_pct * 100:.0f}% reserve)
+   - Prioritize: 100% bullish > recent MACD crossover > oversold with reversal
+3. Use execute_order tool with mode='alpaca' to place real trades
 
 Capital rules:
 - Maintain {self.opportunity_reserve_pct * 100:.0f}% opportunity reserve
