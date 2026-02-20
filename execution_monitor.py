@@ -535,15 +535,23 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
         env = os.environ.copy()
 
         # Check which auth method is available
-        has_oauth = bool(os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'))
-        has_api_key = bool(os.environ.get('ANTHROPIC_API_KEY')) and os.environ.get('ANTHROPIC_API_KEY') != 'your_anthropic_api_key_here'
+        oauth_token = os.environ.get('CLAUDE_CODE_OAUTH_TOKEN', '').strip()
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+        has_oauth = bool(oauth_token) and len(oauth_token) > 10
+        has_api_key = bool(api_key) and api_key != 'your_anthropic_api_key_here' and len(api_key) > 10
 
         if not has_oauth and not has_api_key:
             logger.warning("[STRATEGY AGENT] No auth configured - need CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY")
             return False
 
+        # Track auth method for fallback
+        using_oauth = has_oauth
+        auth_failures = 0
+        max_auth_retries = 5  # Extra retries for auth-related failures
+
         # Retry loop with exponential backoff
-        for attempt in range(self.max_retries):
+        total_attempts = self.max_retries + max_auth_retries
+        for attempt in range(total_attempts):
             try:
                 result = subprocess.run(
                     [
@@ -586,11 +594,32 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                 else:
                     # Check if it's a retriable error (API 500, timeout, etc.)
                     stdout_str = result.stdout or ''
-                    is_retriable = any(err in stdout_str for err in ['500', 'api_error', 'Internal server error', 'overloaded'])
+                    stderr_str = result.stderr or ''
+                    is_api_error = any(err in stdout_str for err in ['500', 'api_error', 'Internal server error', 'overloaded'])
 
-                    if is_retriable and attempt < self.max_retries - 1:
-                        delay = self.retry_delays[attempt]
-                        logger.warning(f"[STRATEGY AGENT] API error (attempt {attempt + 1}/{self.max_retries}), retrying in {delay}s...")
+                    # Detect auth failures: exit code 1 with no meaningful output
+                    is_auth_failure = (result.returncode == 1 and
+                                       len(stdout_str.strip()) < 50 and
+                                       len(stderr_str.strip()) < 50)
+
+                    is_retriable = is_api_error or is_auth_failure
+
+                    if is_retriable and attempt < total_attempts - 1:
+                        # Use longer delay for auth failures to allow token refresh
+                        if is_auth_failure:
+                            auth_failures += 1
+                            delay = min(30, 10 * auth_failures)  # 10s, 20s, 30s for auth issues
+                            logger.warning(f"[STRATEGY AGENT] Possible auth failure (attempt {attempt + 1}/{total_attempts}), retrying in {delay}s...")
+
+                            # If OAuth keeps failing and we have API key, try switching
+                            if auth_failures >= 3 and has_api_key and using_oauth:
+                                logger.warning("[STRATEGY AGENT] OAuth failing repeatedly, falling back to API key")
+                                using_oauth = False
+                                # API key is used automatically by Claude CLI if available
+                        else:
+                            delay = self.retry_delays[min(attempt, len(self.retry_delays) - 1)]
+                            logger.warning(f"[STRATEGY AGENT] API error (attempt {attempt + 1}/{total_attempts}), retrying in {delay}s...")
+
                         time.sleep(delay)
                         continue
                     else:
@@ -600,6 +629,8 @@ Check portfolio correlation - high-correlation positions amplify risk during vol
                         logger.error(f"   stderr: {result.stderr[:500] if result.stderr else '(none)'}")
                         logger.error(f"   Claude path: {claude_path}")
                         logger.error(f"   Auth: OAuth={'yes' if has_oauth else 'no'}, API={'yes' if has_api_key else 'no'}")
+                        if is_auth_failure:
+                            logger.error(f"   Auth failures: {auth_failures} (possible token expiration)")
 
                         if not is_retriable:
                             break  # Don't retry non-API errors
