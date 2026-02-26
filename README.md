@@ -562,6 +562,10 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## 🌐 SaaS Version
+
+Looking for a hosted version? [**SaaS-Market-Agent**](https://github.com/HumboldtJoker/SaaS-Market-Agent) wraps this project as a multi-tenant hosted product with user authentication, subscription management, and a web dashboard. If you want to run Market-Analysis-Agent as a service rather than a local tool, start there.
+
 ## 👥 Authors
 
 - **Lyra** - AI architecture and implementation
