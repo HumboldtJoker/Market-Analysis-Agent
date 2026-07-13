@@ -186,13 +186,14 @@ def generate_thesis(ticker: str, stock_data: StockData, macro: MarketContext,
     PolyBench lesson: the LLM does not originate conviction — the structured
     composite does. Claude's job is narrative, sanity-checking, and veto.
     """
-    import anthropic
-
     try:
+        anthropic_key()
+        import anthropic
+        _use_cli = False
         client = anthropic.Anthropic(api_key=anthropic_key())
-    except Exception as e:
-        log.error("Anthropic key unavailable (%s) — using composite-only fallback", e)
-        return None
+    except Exception:
+        _use_cli = True
+        client = None
 
     sector = SECTOR_MAP.get(ticker, "Unknown")
     sector_block = ""
@@ -262,17 +263,37 @@ Respond in EXACTLY this JSON format:
 If the setup isn't compelling, say "hold" with conviction "none".
 Better to miss an opportunity than force a bad trade."""
 
-    try:
-        resp = client.messages.create(
-            model=THESIS_MODEL,
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    except anthropic.APIError as e:
-        log.error("Anthropic API unavailable (%s) — using composite-only fallback", e)
-        return None  # caller falls back to deterministic thesis
+    text = None
 
-    text = resp.content[0].text.strip()
+    if not _use_cli and client:
+        try:
+            import anthropic
+            resp = client.messages.create(
+                model=THESIS_MODEL,
+                max_tokens=500,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = resp.content[0].text.strip()
+            log.info("Thesis via Anthropic SDK (%s)", THESIS_MODEL)
+        except Exception as e:
+            log.warning("Anthropic SDK failed (%s), trying Claude CLI", e)
+
+    if text is None:
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["claude", "-p", "--model", "sonnet", prompt],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                text = result.stdout.strip()
+                log.info("Thesis via Claude CLI (OAuth)")
+            else:
+                log.error("Claude CLI failed: rc=%d stderr=%s", result.returncode, result.stderr[:200])
+                return None
+        except Exception as e:
+            log.error("Claude CLI unavailable (%s) — using composite-only fallback", e)
+            return None
     try:
         start = text.index("{")
         end = text.rindex("}") + 1
