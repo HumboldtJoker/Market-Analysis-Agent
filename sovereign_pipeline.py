@@ -282,7 +282,7 @@ Better to miss an opportunity than force a bad trade."""
         import subprocess
         try:
             result = subprocess.run(
-                ["claude", "-p", "--model", "sonnet", prompt],
+                ["/home/asdf/.local/bin/claude", "-p", "--model", "sonnet", prompt],
                 capture_output=True, text=True, timeout=120,
             )
             if result.returncode == 0 and result.stdout.strip():
