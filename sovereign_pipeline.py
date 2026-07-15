@@ -281,9 +281,11 @@ Better to miss an opportunity than force a bad trade."""
     if text is None:
         import subprocess
         try:
+            cli_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
             result = subprocess.run(
                 ["/home/asdf/.local/bin/claude", "-p", "--model", "sonnet", prompt],
                 capture_output=True, text=True, timeout=120,
+                env=cli_env,
             )
             if result.returncode == 0 and result.stdout.strip():
                 text = result.stdout.strip()
