@@ -178,6 +178,28 @@ def compute_rsi(closes: list, period: int = 14) -> float:
     return 100 - (100 / (1 + rs))
 
 
+def _get_portfolio_context() -> str:
+    """Read current positions and format as context for the LLM."""
+    from sovereign_config import STATE_DIR, load_json
+    positions = load_json(STATE_DIR / "positions_state.json", default={})
+    if not positions:
+        return "\nPORTFOLIO: No open positions. Full cash available.\n"
+
+    lines = [f"\nCURRENT PORTFOLIO ({len(positions)} open positions):"]
+    for ticker, pos in positions.items():
+        entry = pos.get("entry", 0)
+        stop = pos.get("stop", 0)
+        target = pos.get("target", 0)
+        lines.append(f"  {ticker}: entry ${entry:.2f}, stop ${stop:.2f}, target ${target:.2f}")
+
+    pct_deployed = len(positions) * 15  # rough estimate at 15% per position
+    lines.append(f"Approximate deployment: ~{pct_deployed}% of equity")
+    if len(positions) >= 4:
+        lines.append("WARNING: At or near max positions. Only enter if clearly better than an existing holding.")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def generate_thesis(ticker: str, stock_data: StockData, macro: MarketContext,
                      sector_context: str = "", congress_context: str = "",
                      signal_context: str = "") -> Thesis:
@@ -222,11 +244,13 @@ tells a different story. Do not manufacture conviction the composite lacks —
 if the composite is weak and you see nothing compelling, say hold.
 """
 
+    portfolio_block = _get_portfolio_context()
+
     prompt = f"""You are a disciplined market analyst for a small autonomous trading account.
 All position sizing is expressed as PERCENT of account equity — the account uses
 fractional shares, so any stock is tradeable regardless of share price or account size.
 Conservative position sizing. No speculation without evidence.
-
+{portfolio_block}
 CURRENT MACRO:
 - VIX: {macro.vix:.1f} (regime: {macro.macro_regime})
 - Fed Funds Rate: {macro.fed_funds_rate:.2f}%
@@ -241,6 +265,8 @@ STOCK: {ticker} ({sector})
 - Recent bars (last 5 days): {json.dumps(stock_data.bars_5d, indent=2)}
 
 POSITION SIZING RULES:
+- Max 4 open positions at a time. If already at 4, say "hold" unless this is clearly
+  better than an existing position (in which case, say which one to close).
 - Max position: 30% of portfolio
 - High conviction: 25%
 - Medium conviction: 15%
