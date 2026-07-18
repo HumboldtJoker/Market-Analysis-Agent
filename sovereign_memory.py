@@ -103,6 +103,15 @@ class SovereignMemory:
 
         conn.commit()
         log.info("Memory: entry recorded for %s (%s)", ticker, trade_id)
+
+        try:
+            from sovereign_kg import SovereignKG
+            kg = SovereignKG()
+            kg.index_trade(ticker, sector, conviction, trade_id=trade_id)
+            kg.close()
+        except Exception as e:
+            log.debug("KG index failed: %s", e)
+
         return trade_id
 
     def write_exit(self, ticker, exit_price, exit_reason, hold_days,
@@ -136,6 +145,17 @@ class SovereignMemory:
         conn.commit()
         log.info("Memory: exit recorded for %s — %s (%.1f%%)", ticker,
                  exit_reason, pnl)
+
+        try:
+            from sovereign_kg import SovereignKG
+            kg = SovereignKG()
+            cur.execute("SELECT sector FROM trade_memories WHERE id = %s", (trade_id,))
+            sector_row = cur.fetchone()
+            kg.index_trade(ticker, sector_row[0] if sector_row else "",
+                           "", exit_reason, trade_id=trade_id)
+            kg.close()
+        except Exception as e:
+            log.debug("KG exit index failed: %s", e)
 
     def write_thesis(self, ticker, direction, conviction, thesis,
                      signal_breakdown, composite_score, sector,
@@ -245,6 +265,17 @@ class SovereignMemory:
             for s in recent_stops:
                 date_str = s[2].strftime("%Y-%m-%d") if s[2] else "?"
                 blocks.append(f"  [{date_str}] {s[0]} {s[1]:+.1f}%")
+
+        # 5. Knowledge graph associations
+        try:
+            from sovereign_kg import SovereignKG
+            kg = SovereignKG()
+            graph_context = kg.query_for_thesis(ticker, sector)
+            if graph_context:
+                blocks.append(graph_context)
+            kg.close()
+        except Exception as e:
+            log.debug("KG query failed: %s", e)
 
         # Update access counts
         if ticker_trades:
