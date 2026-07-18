@@ -1,0 +1,132 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Project specific
+investor_profile.json
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+test_output/
+*.test
+desktop/settings.json
+
+# AutoInvestor - Local configuration
+claude_code_config.json
+claude_desktop_config.json
+.mcp.json
+.claude/settings.local.json
+
+# AutoInvestor - Node modules
+node_modules/
+
+# AutoInvestor - Runtime logs (update constantly)
+execution_log.md
+vix_log.json
+
+# AutoInvestor - Local status files
+SETUP_COMPLETE.md
+FINAL_STATUS.md
+HOOK_SETUP_COMPLETE.md
+MCP_DEBUG_STATUS.md
+CLAUDE_CODE_SETUP.md
+CLAUDE_CODE_INFO.md
+STARTUP_HOOK_SETUP.md
+MCP_SERVER_SETUP.md
+
+# AutoInvestor - Runtime state files
+portfolio_state.json
+last_review.json
+strategy_review_needed.json
+scheduled_review_needed.json
+api_failure_alert.json
+defensive_mode_state.json
+discovery_needed.json
+events_calendar.json
+fallback_actions.json
+last_agent_response.json
+last_discovery.json
+prior_close_state.json
+overnight_state.json
+rotation_state.json
+overnight_news.json
+weekend_news.json
+morning_briefing.md
+
+# AutoInvestor - Scan results and reviews (generated at runtime)
+opportunity_discovery_scan_*.json
+opportunity_scan_results*.json
+strategy_review_*.json
+pre_market_review_*.md
+ai_ecosystem_watchlist*.json
+
+# AutoInvestor - Active trading instructions (pending execution)
+trading_instructions.json
+
+# AutoInvestor - Test/debug files
+claude_test.txt
+test_mcp_tools.js
+tests/
+
+# AutoInvestor - Historical logs (KEEP in git for audit trail)
+# trading_instructions_history/
+# strategy_reviews/
+# execution_results/
+
+# AutoInvestor - Temporary files
+nul
+
+# Session handoff files (internal development notes)
+SESSION*.md
+NEXT_SESSION_HANDOFF.md
+
+# Strategy reviews in subfolders
+strategy_reviews/*.json
+
+# Internal planning docs
+TODO.md
+
+# Weekend briefing (runtime generated)
+weekend_briefing.md
+# Internal architecture docs
+MNEMOSYNE_DESIGN.md
+sovereign_memory_schema.sql

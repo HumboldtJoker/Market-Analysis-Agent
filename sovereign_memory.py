@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 PG_HOST = "localhost"
 PG_PORT = 5434
 PG_USER = "cc"
-PG_PASS = os.environ.get("CC_PG_PASSWORD", "cc_resistance_2026")
+PG_PASS = os.environ.get("CC_PG_PASSWORD", "")
 PG_DB = "sovereign_memory"
 
 MAX_CONTEXT_TOKENS = 400
@@ -45,12 +45,17 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+_embed_model = None
+
+
 def _embed(text):
     """Generate embedding for hybrid search. Returns None if unavailable."""
+    global _embed_model
     try:
         from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-mpnet-base-v2")
-        emb = model.encode(text, normalize_embeddings=True)
+        if _embed_model is None:
+            _embed_model = SentenceTransformer("all-mpnet-base-v2")
+        emb = _embed_model.encode(text, normalize_embeddings=True)
         return "[" + ",".join(str(float(x)) for x in emb) + "]"
     except Exception:
         return None
@@ -281,9 +286,12 @@ class SovereignMemory:
 
             if action == "buy":
                 entries[ticker] = record
+                # Derive entry price from stop (stop = entry * (1 - stop_pct))
+                stop = record.get("stop", 0)
+                entry_price = stop / 0.92 if stop else 0
                 self.write_entry(
                     ticker=ticker,
-                    entry_price=record.get("notional", 0) / max(record.get("composite", 1), 0.01),
+                    entry_price=round(entry_price, 2),
                     conviction=record.get("conviction", "low"),
                     thesis=record.get("thesis", ""),
                     signal_breakdown="",
@@ -305,7 +313,8 @@ class SovereignMemory:
                 entry_price = 0
                 if ticker in entries:
                     buy = entries[ticker]
-                    entry_price = buy.get("notional", 0) / max(buy.get("composite", 1), 0.01)
+                    stop = buy.get("stop", 0)
+                    entry_price = stop / 0.92 if stop else 0
 
                 # Try to extract exit price from the why string
                 import re
