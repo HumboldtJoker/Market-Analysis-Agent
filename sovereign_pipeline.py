@@ -246,11 +246,21 @@ if the composite is weak and you see nothing compelling, say hold.
 
     portfolio_block = _get_portfolio_context()
 
+    memory_block = ""
+    try:
+        from sovereign_memory import SovereignMemory
+        mem = SovereignMemory()
+        memory_block = mem.recall_for_thesis(ticker, SECTOR_MAP.get(ticker, ""))
+        mem.close()
+    except Exception as e:
+        log.debug("Memory recall unavailable: %s", e)
+
     prompt = f"""You are a disciplined market analyst for a small autonomous trading account.
 All position sizing is expressed as PERCENT of account equity — the account uses
 fractional shares, so any stock is tradeable regardless of share price or account size.
 Conservative position sizing. No speculation without evidence.
 {portfolio_block}
+{memory_block}
 CURRENT MACRO:
 - VIX: {macro.vix:.1f} (regime: {macro.macro_regime})
 - Fed Funds Rate: {macro.fed_funds_rate:.2f}%
